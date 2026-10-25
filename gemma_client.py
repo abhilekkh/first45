@@ -35,7 +35,7 @@ DEFAULT_MODEL = "gemma-4-26b-a4b-it"
 MODEL = os.getenv("GEMMA_MODEL", DEFAULT_MODEL)
 
 # The five kill-chain stages First45 understands (in attack order).
-STAGES = ["exploit_attempt", "web_shell", "loader_download", "c2_contact", "ddos"]
+STAGES = ["recon", "exploit_attempt", "web_shell", "loader_download", "c2_contact", "ddos"]
 
 THREAT_PROMPT = """You are a security analyst helping a small college IT team.
 Read the security advisory and extract the facts.
@@ -59,7 +59,7 @@ Return ONLY one JSON object (no markdown, no explanation) with exactly these key
 }
 
 Rules:
-- "stage" must be one of: exploit_attempt, web_shell, loader_download, c2_contact, ddos.
+- "stage" must be one of: recon, exploit_attempt, web_shell, loader_download, c2_contact, ddos.
 - Copy every IP, domain, port and version EXACTLY from the advisory. Never invent one.
 - Write IPs and domains without defang brackets: 92.118.112.100, not 92.118.112[.]100.
 - Public DNS resolvers (8.8.8.8, 1.1.1.1, 1.0.0.1) are NOT attacker IPs: leave them out of iocs.ips.

@@ -6,3 +6,4 @@ pandas>=2.2            # BSD-3    - log tables
 pyyaml>=6.0            # MIT      - writes Sigma rules (YAML)
 pypdf>=5.0             # BSD-3    - reads PDF advisories
 pillow>=11.0           # MIT-CMU  - image handling for screenshots
+requests>=2.32         # Apache-2.0 - push alerts (ntfy / Discord)

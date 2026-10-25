@@ -1,0 +1,6 @@
+host	ip	role	php_version
+web-library	10.0.0.11	library website	8.3.36
+web-club	10.0.0.12	student club site	8.1.2
+web-hostel	10.0.0.13	hostel portal	8.2.10
+web-fest	10.0.0.14	fest website	8.4.27
+mail-dept	10.0.0.15	department mail	none

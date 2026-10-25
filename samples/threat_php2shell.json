@@ -1,0 +1,114 @@
+{
+  "name": "PHP2Shell",
+  "cves": [
+    "CVE-2026-109618",
+    "CVE-2026-109619"
+  ],
+  "cvss": 9.2,
+  "summary": "A critical vulnerability in the PHP engine allows unauthenticated attackers to execute remote code via specially crafted HTTP requests.",
+  "product": "PHP engine (core)",
+  "affected_versions": [
+    "5.4"
+  ],
+  "fixed_versions": [
+    "8.5.12",
+    "8.4.27",
+    "8.3.36",
+    "8.2.35"
+  ],
+  "no_fix_branches": [
+    "7.4",
+    "8.0",
+    "8.1"
+  ],
+  "iocs": {
+    "ips": [
+      "134.199.154.64",
+      "206.188.197.105",
+      "217.60.242.76",
+      "45.198.224.169",
+      "85.11.167.243",
+      "92.118.112.100"
+    ],
+    "domains": [
+      "thunder.godofthunder.st"
+    ],
+    "ports": [
+      9999,
+      50792
+    ],
+    "urls": []
+  },
+  "stages": [
+    {
+      "stage": "exploit_attempt",
+      "description": "Crafted HTTP request to a PHP endpoint.",
+      "indicators": [
+        "85.11.167.243",
+        "217.60.242.76",
+        "45.198.224.169",
+        "206.188.197.105",
+        "9999"
+      ]
+    },
+    {
+      "stage": "web_shell",
+      "description": "Attempt to drop a web shell via a server-side PHP session file.",
+      "indicators": []
+    },
+    {
+      "stage": "loader_download",
+      "description": "Compromised host contacts loader to deliver the Mirai variant.",
+      "indicators": [
+        "92.118.112.100"
+      ]
+    },
+    {
+      "stage": "c2_contact",
+      "description": "Command and control via TCP port 50792.",
+      "indicators": [
+        "134.199.154.64",
+        "50792",
+        "thunder.godofthunder.st"
+      ]
+    },
+    {
+      "stage": "ddos",
+      "description": "DDoS floods (ICMP, TCP, UDP, OpenVPN).",
+      "indicators": []
+    }
+  ],
+  "actions": [
+    "Patch to a fixed PHP version",
+    "Block identified IPs and domain",
+    "Alert on outbound TCP 50792",
+    "Monitor for unexpected ELF downloads and DNS lookups of the C2 domain",
+    "Inspect web servers and PHP session files for web shells",
+    "Apply outbound egress filtering",
+    "Isolate hosts that contacted the indicators"
+  ],
+  "advisory_text": "",
+  "_meta": {
+    "model": "gemma-4-26b-a4b-it",
+    "input": "text",
+    "seconds": 87.4,
+    "ioc_check": {
+      "verified": [
+        "134.199.154.64",
+        "206.188.197.105",
+        "217.60.242.76",
+        "45.198.224.169",
+        "85.11.167.243",
+        "92.118.112.100",
+        "thunder.godofthunder.st",
+        "9999",
+        "50792",
+        "8.5.12",
+        "8.4.27",
+        "8.3.36",
+        "8.2.35"
+      ],
+      "unverified": []
+    }
+  }
+}
