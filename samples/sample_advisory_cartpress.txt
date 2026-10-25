@@ -1,0 +1,36 @@
+SECURITY ADVISORY - CartPress Commerce (SYNTHETIC SAMPLE for First45 demos; all indicators are
+documentation-only addresses, RFC 5737 / RFC 2606, and point at no real host)
+
+Name: CartPress Checkout RCE
+CVEs: CVE-2026-20311
+Severity: CVSS 9.6 (critical)
+Type: Unauthenticated remote code execution in the CartPress Commerce plugin for WordPress, reached
+through the checkout webhook endpoint (/wp-json/cartpress/v1/webhook). A crafted POST deserializes
+attacker-controlled data and runs PHP code. No login required.
+
+Disclosed: 14 March 2026. First mass exploitation observed 15 March 2026, ~06:00 UTC.
+
+Affected versions: CartPress Commerce 3.0.0 through 3.8.4.
+Fixed versions: 3.8.5, 4.0.1.
+No fix for the 2.x branch: upgrade to 3.8.5 or later.
+
+Observed attack chain:
+1. Reconnaissance: scanning for /wp-json/cartpress/v1/ and /wp-content/plugins/cartpress/readme.txt
+   from 203.0.113.42 and 203.0.113.77.
+2. Exploit attempt: crafted POST to the webhook endpoint carrying a serialized payload.
+   Attacker IPs: 203.0.113.42, 198.51.100.23.
+3. Web shell: successful hosts receive a backdoor written to /wp-content/uploads/cp-cache/status.php.
+4. Loader: the backdoor pulls a second-stage binary from cdn.update-cartpress.example over HTTP.
+5. Command and control: outbound TCP to 198.51.100.200 on port 7443; beacons every 60 seconds.
+
+Indicators of compromise:
+- IPs: 203.0.113.42, 203.0.113.77, 198.51.100.23, 198.51.100.200
+- Domain: cdn.update-cartpress.example
+- Port: 7443 (C2)
+- File: /wp-content/uploads/cp-cache/status.php
+
+Recommended actions:
+- Update CartPress Commerce to 3.8.5 or 4.0.1.
+- Block the IPs and domain above; alert on outbound TCP 7443.
+- Search uploads for status.php and other recently added PHP files.
+- Rotate WordPress secret keys and admin passwords on any affected host.

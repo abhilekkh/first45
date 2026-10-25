@@ -184,6 +184,41 @@ section[data-testid="stSidebar"]{{background:var(--surface)!important;border-rig
 .f45-foot{{margin-top:48px;padding:18px 0 8px;border-top:1px solid var(--border);color:var(--muted);
   font-size:.82rem;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}}
 
+/* ---- CVSS severity gauge ---- */
+.f45-gauge{{margin:.1rem 0 1rem}}
+.f45-gauge-track{{height:9px;border-radius:5px;background:var(--surface2);overflow:hidden;border:1px solid var(--border)}}
+.f45-gauge-fill{{height:100%;border-radius:5px;transition:width .4s ease}}
+.b-bg-crit{{background:var(--crit)}}.b-bg-high{{background:var(--high)}}.b-bg-med{{background:var(--med)}}.b-bg-low{{background:var(--low)}}
+.f45-gauge-cap{{margin-top:6px;font-family:'IBM Plex Mono',monospace;font-size:.82rem;color:var(--muted)}}
+.f45-gauge-cap b{{color:var(--text);font-size:1.05rem}}
+
+/* ---- time-to-defense stopwatch (the "45 seconds" pitch, made literal) ---- */
+.f45-timer{{display:inline-flex;align-items:center;gap:6px;margin:.1rem 0 .5rem;padding:5px 12px;border-radius:7px;
+  font-family:'IBM Plex Mono',monospace;font-size:.84rem;background:var(--surface);border:1px solid var(--border)}}
+.f45-timer b{{color:var(--text)}}
+.f45-timer.ok{{color:var(--ok);border-color:var(--ok)}}
+.f45-timer.live{{color:var(--accent);border-color:var(--accent)}}
+
+/* ---- attack timeline ---- */
+.f45-timeline{{list-style:none;margin:.3rem 0;padding:0}}
+.tl-item{{position:relative;display:grid;grid-template-columns:86px 150px 1fr;gap:10px;align-items:center;
+  padding:8px 0 8px 26px;border-left:2px solid var(--border);margin-left:5px}}
+.tl-dot{{position:absolute;left:-6px;top:50%;transform:translateY(-50%);width:11px;height:11px;border-radius:50%;
+  border:2px solid var(--surface)}}
+.tl-dot.s-recon{{background:var(--low)}}.tl-dot.s-exploit_attempt{{background:var(--med)}}
+.tl-dot.s-web_shell,.tl-dot.s-loader_download{{background:var(--high)}}
+.tl-dot.s-c2_contact{{background:var(--crit)}}.tl-dot.s-ddos{{background:#7a1f1f}}
+.tl-time{{font-family:'IBM Plex Mono',monospace;font-size:.8rem;color:var(--muted)}}
+.tl-stage{{font-weight:600;font-size:.9rem;color:var(--text)}}
+.tl-note{{color:var(--muted);font-size:.86rem}}
+@media(max-width:640px){{.tl-item{{grid-template-columns:1fr;gap:2px;padding-left:22px}}}}
+
+/* ---- polish: a little lift on cards ---- */
+[data-testid="stVerticalBlockBorderWrapper"]:has(>div>[data-testid="stVerticalBlock"]){{
+  transition:border-color .15s,box-shadow .15s}}
+[data-testid="stVerticalBlockBorderWrapper"]:has(>div>[data-testid="stVerticalBlock"]):hover{{
+  box-shadow:0 2px 14px rgba(0,0,0,.18)}}
+
 /* ---- NATIVE Streamlit widgets: driven by the same tokens so they switch with the theme ---- */
 /* text inputs, number inputs, text areas */
 .stTextInput input,.stNumberInput input,.stTextArea textarea,[data-baseweb="input"],

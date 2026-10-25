@@ -67,6 +67,17 @@ def _cache_put(key: str, value: dict) -> None:
     except OSError:
         pass            # a cache write failure must never break the real result
 
+
+def warm_cache(text: str, threat: dict) -> None:
+    """Seed the cache so a known advisory's text returns instantly (no model call).
+
+    Used to pre-warm demo advisories: the stored threat JSON is served as if Gemma
+    had just read that exact text. Only writes if nothing is cached for it yet.
+    """
+    key = _cache_key("txt", text.encode("utf-8"))
+    if _cache_get(key) is None:
+        _cache_put(key, threat)
+
 # The five kill-chain stages First45 understands (in attack order).
 STAGES = ["recon", "exploit_attempt", "web_shell", "loader_download", "c2_contact", "ddos"]
 

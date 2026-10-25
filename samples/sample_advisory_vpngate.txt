@@ -1,0 +1,34 @@
+SECURITY ADVISORY - VPNGate Appliance (SYNTHETIC SAMPLE for First45 demos; all indicators are
+documentation-only addresses, RFC 5737 / RFC 2606, and point at no real host)
+
+Name: VPNGate Pre-Auth Command Injection
+CVEs: CVE-2026-44190, CVE-2026-44191
+Severity: CVSS 9.8 (critical)
+Type: Pre-authentication OS command injection in the VPNGate SSL-VPN appliance web portal, via the
+"lang" parameter of /remote/login. An attacker runs commands as root without credentials.
+
+Disclosed: 2 February 2026. Exploited in the wild before disclosure (zero-day); public exploit
+released 4 February 2026.
+
+Affected versions: VPNGate OS 7.2.0 to 7.2.9 and 7.4.0 to 7.4.3.
+Fixed versions: 7.2.10, 7.4.4, 7.6.0.
+No fix for 6.x (end of life): migrate to 7.4.4 or later.
+
+Observed attack chain:
+1. Reconnaissance: requests to /remote/login and /remote/fgt_lang from 192.0.2.15.
+2. Exploit attempt: command injection in the "lang" parameter of /remote/login.
+   Attacker IPs: 192.0.2.15, 192.0.2.88.
+3. Loader: the appliance downloads an ELF implant from files.vpn-update.example.
+4. Command and control: TCP to 203.0.113.9 on port 8088; also a DNS lookup of sync.vpn-update.example.
+5. Impact: credential theft from the VPN session store and lateral movement into the internal network.
+
+Indicators of compromise:
+- IPs: 192.0.2.15, 192.0.2.88, 203.0.113.9
+- Domains: files.vpn-update.example, sync.vpn-update.example
+- Port: 8088 (C2)
+
+Recommended actions:
+- Upgrade VPNGate OS to 7.2.10, 7.4.4 or 7.6.0.
+- Block the IPs and domains above; alert on outbound TCP 8088.
+- Treat any 6.x appliance as end of life and replace it.
+- Force a password reset for all VPN users and review VPN session logs for unknown logins.

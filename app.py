@@ -10,11 +10,15 @@ Four simple steps:
 """
 from __future__ import annotations
 
+import html
 import importlib
+import io
 import ipaddress
 import json
 import mimetypes
+import os
 import time
+import zipfile
 from pathlib import Path
 
 import pandas as pd
@@ -28,14 +32,26 @@ import protect
 import rules
 import ui
 
-for _m in (ui, hunt, lab):
-    importlib.reload(_m)   # pick up edits to these modules without restarting the server
+# Hot-reload is only for live code edits during development. It re-imports three
+# modules on EVERY interaction, which adds work to each click, so it is off unless
+# FIRST45_DEV=1 is set. Leaving it off makes the whole app feel snappier in a demo.
+if os.getenv("FIRST45_DEV"):
+    for _m in (ui, hunt, lab):
+        importlib.reload(_m)
 
 ROOT = Path(__file__).resolve().parent
 SAMPLE_ADVISORY = ROOT / "samples" / "php2shell_advisory.txt"
 SAMPLE_THREAT = ROOT / "samples" / "threat_php2shell.json"
 SAMPLE_REPORT = ROOT / "samples" / "report_php2shell.md"
 STEPS = ["01  Threat", "02  Servers", "03  Results", "04  Fix & report"]
+
+# Pre-warm the Gemma cache for the sample advisory so "let Gemma read it live"
+# returns instantly (served from cache) instead of taking ~40 s during a demo.
+try:
+    gemma_client.warm_cache(SAMPLE_ADVISORY.read_text(encoding="utf-8"),
+                            json.loads(SAMPLE_THREAT.read_text(encoding="utf-8")))
+except Exception:
+    pass
 
 MODE = ui.setup("app", "First45 · Server defense")
 
@@ -86,6 +102,42 @@ def chain_html(hit: set[str], prevented: set[str] = frozenset()) -> str:
         cls = "on" if s in hit else ("prev" if s in prevented else "")
         chips.append(f'<span class="chip s-{s} {cls}">{hunt.STAGE_LABEL[s]}</span>')
     return '<div class="chain">' + '<span class="sep">/</span>'.join(chips) + "</div>"
+
+
+def cvss_gauge(score) -> str:
+    """A horizontal CVSS severity bar (0-10) coloured by band."""
+    try:
+        val = float(score)
+    except (TypeError, ValueError):
+        return ""
+    pct = max(0.0, min(val / 10, 1.0)) * 100
+    level = "crit" if val >= 9 else "high" if val >= 7 else "med" if val >= 4 else "low"
+    label = "Critical" if val >= 9 else "High" if val >= 7 else "Medium" if val >= 4 else "Low"
+    return (f'<div class="f45-gauge"><div class="f45-gauge-track">'
+            f'<div class="f45-gauge-fill b-bg-{level}" style="width:{pct:.0f}%"></div></div>'
+            f'<div class="f45-gauge-cap"><b>{val:g}</b> / 10 · <span class="b-{level}">{label}</span></div></div>')
+
+
+def timeline_html(hf) -> str:
+    """A vertical kill-chain timeline for one host: stage, first-seen time, meaning."""
+    rows = []
+    for s in hunt.STAGES:
+        sf = hf[(hf["stage"] == s) & ~hf["prevented"]].sort_values("ts")
+        if sf.empty:
+            continue
+        first = sf.iloc[0]
+        rows.append(f'<li class="tl-item"><span class="tl-dot s-{s}"></span>'
+                    f'<span class="tl-time">{first.ts:%H:%M:%S}</span>'
+                    f'<span class="tl-stage">{hunt.STAGE_LABEL[s]}</span>'
+                    f'<span class="tl-note">{html.escape(explain(first.detector) or first.detector)} '
+                    f'· from {html.escape(str(first.actor))}</span></li>')
+    return ('<ul class="f45-timeline">' + "".join(rows) + "</ul>") if rows else ""
+
+
+def lock_defense() -> None:
+    """Freeze the advisory -> defenses stopwatch the first time a defense is produced."""
+    if ss.get("t0") and ss.get("t_defense") is None:
+        ss.t_defense = round(time.time() - ss.t0, 1)
 
 
 VERDICT_LEVEL = {"COMPROMISED": "crit", "ATTACKED": "med", "PROTECTED": "ok", "SAFE": "ok"}
@@ -142,18 +194,43 @@ ui.hero("PHP2Shell · CVE-2026-109618 · CVSS 9.2",
         "PHP2Shell was exploited 45 minutes after disclosure. First45 reads the advisory with Gemma 4, "
         "hunts your server logs for the kill chain, and drafts defenses you approve, for colleges and small teams "
         "without a security staff.")
-bar, tools = st.columns([5, 1.3], vertical_alignment="center")
+bar, demo_col, tools = st.columns([4.2, 1.2, 1.3], vertical_alignment="center")
 with bar:
     step = st.radio("Step", STEPS, horizontal=True, key="step", label_visibility="collapsed")
+if demo_col.button("Guided demo", width="stretch", help="Load the PHP2Shell advisory and the demo "
+                   "network, then jump to the results - a clean one-click walkthrough."):
+    ss.threat = json.loads(SAMPLE_THREAT.read_text(encoding="utf-8"))
+    ss.threat_source = "PHP2Shell sample"
+    ss.logs = hunt.load_logs()
+    ss.log_source = "College network: 5 servers, logs from 22 Oct (demo data)"
+    ss.t0 = time.time()
+    ss.pop("t_defense", None)
+    ss.demo_mode = True
+    go(2)
 with tools.popover("Operator", width="stretch"):
     ss.approver = st.text_input("Your name (for the approval log)", value=ss.get("approver", "IT admin"))
     st.caption("1. Gemma 4 reads the advisory  \n2. Rules are written in open formats  \n"
                "3. Server logs are hunted for the kill chain  \n4. You approve every block")
     if st.button("Reset demo", width="stretch"):
         protect.reset()
-        for k in ("report", "logs", "log_source", "live_ready", "live_attacker"):
+        for k in ("report", "logs", "log_source", "live_ready", "live_attacker",
+                  "t0", "t_defense", "demo_mode"):
             ss.pop(k, None)
         st.rerun()
+
+# Time-to-defense stopwatch: the "45 seconds" pitch, made literal and honest.
+if ss.get("t_defense") is not None:
+    st.markdown('<div class="f45-timer ok">Advisory to working defenses in '
+                f'<b>{ss.t_defense:g}s</b></div>', unsafe_allow_html=True)
+elif ss.get("t0"):
+    st.markdown('<div class="f45-timer live">Working on it &middot; '
+                f'<b>{int(time.time() - ss.t0)}s</b> since the advisory loaded</div>',
+                unsafe_allow_html=True)
+
+if ss.get("demo_mode"):
+    st.caption("Guided demo: PHP2Shell advisory + the recorded college network are loaded. "
+               "Walk through 03 Results, then 04 Fix & report. Detection is deterministic rules "
+               "over real log data; Gemma 4 only reads the advisory and writes the report.")
 
 threat = ss.threat
 
@@ -195,11 +272,15 @@ if step == STEPS[0]:
         else:
             if st.button("Continue without an advisory", type="primary"):
                 ss.threat, ss.threat_source = None, "none"
+                ss.t0, ss.demo_mode = time.time(), False
+                ss.pop("t_defense", None)
                 go(1)
     except Exception as error:
         st.error(f"Could not read that advisory: {error}")
     if new:
         ss.threat, ss.threat_source = new, choice
+        ss.t0, ss.demo_mode = time.time(), False   # start the advisory -> defenses stopwatch
+        ss.pop("t_defense", None)
         st.rerun()
 
     threat = ss.threat
@@ -208,6 +289,9 @@ if step == STEPS[0]:
         nv, nu = len(chk.get("verified", [])), len(chk.get("unverified", []))
         with st.container(border=True):
             st.markdown(f"### {threat.get('name', 'Threat')}  \n{threat.get('summary', '')}")
+            gauge = cvss_gauge(threat.get("cvss"))
+            if gauge:
+                st.markdown(gauge, unsafe_allow_html=True)
             a, b, c = st.columns(3)
             a.metric("Danger (CVSS, out of 10)", threat.get("cvss") or "?")
             b.metric("Attacker addresses found", len(threat["iocs"]["ips"]) + len(threat["iocs"]["domains"]))
@@ -327,12 +411,14 @@ elif step == STEPS[1]:
         w, d, c = len(logs["web"]), len(logs["dns"]), len(logs["conn"])
         st.write(f"**{len(logs['inventory'])} server(s)** · {w:,} web requests · {d:,} DNS lookups · {c:,} connections")
         if st.button("Scan now", type="primary"):
-            bar = st.progress(0, text="Starting…")
+            # Run the real detectors immediately. A short progress sweep gives feedback
+            # without the old fixed 0.15 s-per-check delay that made scanning feel slow.
             checks = ["Matching the advisory's attacker addresses"] + \
                      [f"Looking for {d.__name__.replace('_', ' ')}" for d in hunt.BEHAVIOUR_DETECTORS]
+            bar = st.progress(0.0, text="Hunting…")
             for i, label in enumerate(checks, 1):
                 bar.progress(i / len(checks), text=label + "…")
-                time.sleep(0.15)
+                time.sleep(0.03)
             ss.logs, ss.log_source = logs, src
             go(2)
 
@@ -384,7 +470,7 @@ elif step == STEPS[2]:
                         lines.append(f"`{first.ts:%d %b %H:%M:%S}` **{hunt.STAGE_LABEL[s]}** — {explain(first.detector)} "
                                      f"*(from {first.actor})*")
                         box.markdown(chain_html(seen) + "\n\n" + "\n\n".join(lines), unsafe_allow_html=True)
-                        time.sleep(1.0)
+                        time.sleep(0.45)   # fast enough to feel live, quick enough not to drag
                 with c2.expander(f"Evidence ({len(hf)} alerts)"):
                     agg = (hf.groupby(["stage", "detector", "actor"], sort=False)
                              .agg(first_seen=("ts", "min"), times=("ts", "size"),
@@ -392,6 +478,10 @@ elif step == STEPS[2]:
                     agg.insert(2, "what it means", agg["detector"].map(explain))
                     agg["stage"] = agg["stage"].map(hunt.STAGE_LABEL)
                     st.dataframe(agg, hide_index=True, width="stretch")
+                tl = timeline_html(hf)
+                if tl:
+                    with st.expander("Attack timeline (first time each stage was seen)"):
+                        st.markdown(tl, unsafe_allow_html=True)
     if st.button("Next: fix it →", type="primary"):
         go(3)
 
@@ -425,6 +515,7 @@ else:
                         st.rerun()
                 elif b.button("Block", key=f"b-{who}", type="primary"):
                     protect.approve_block(who, ss.approver, f"{worst.detector} on {', '.join(sorted(g['host'].unique()))}")
+                    lock_defense()          # first approved block = defenses are live
                     st.rerun()
         if blocked:
             st.info("Blocked attackers are now refused. Open step 03 again: their attacks show as prevented.")
@@ -444,11 +535,24 @@ else:
         if threat:
             notes = {".sigma.yml": "for security dashboards (Sigma)", ".rules": "for intrusion detection (Suricata)",
                      ".nginx-deny.conf": "for the web server (nginx)", ".firewall.txt": "firewall commands (Linux / Windows)"}
-            for fname, text in rules.all_rules(threat).items():
+            all_files = rules.all_rules(threat)
+            # One-click bundle: every rule file (+ the report, if written) in a single zip.
+            bundle = io.BytesIO()
+            with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as zf:
+                for fname, text in all_files.items():
+                    zf.writestr(fname, text)
+                if ss.get("report"):
+                    zf.writestr("incident-report.md", ss.report)
+                zf.writestr("README.txt", "First45 defense bundle.\nDeploy each rule in its tool; "
+                            "blocks are human-approved and reversible.\n")
+            lock_defense()                  # rules exist = defenses are ready
+            st.download_button("Download all defenses (.zip)", bundle.getvalue(),
+                               file_name="first45-defenses.zip", type="primary", key="dl-all")
+            for fname, text in all_files.items():
                 note = next((v for k, v in notes.items() if fname.endswith(k)), "")
                 st.download_button(f"{fname}  ·  {note}", text, file_name=fname, key=f"dl-{fname}")
             with st.expander("Preview the rules"):
-                for fname, text in rules.all_rules(threat).items():
+                for fname, text in all_files.items():
                     st.markdown(f"`{fname}`")
                     st.code(text, language="yaml" if fname.endswith(".yml") else None)
         else:

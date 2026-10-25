@@ -27,8 +27,11 @@ import gemma_client  # noqa: E402
 import notify  # noqa: E402
 import ui  # noqa: E402
 
-for _m in (ui, dg):
-    importlib.reload(_m)   # pick up edits without restarting the server
+import os  # noqa: E402
+
+if os.getenv("FIRST45_DEV"):          # hot-reload only in dev; off = snappier clicks
+    for _m in (ui, dg):
+        importlib.reload(_m)
 
 SAMPLE_THREAT = ROOT / "samples" / "threat_php2shell.json"
 SIMULATOR = ROOT / "simulate_bot.py"
