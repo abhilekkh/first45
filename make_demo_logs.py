@@ -108,11 +108,24 @@ def write(name: str, header: list[str], rows: list[list]) -> None:
         w.writerows(rows)
 
 
+def write_access_logs() -> None:
+    """Also write each server's web traffic as a real nginx 'combined' access log."""
+    folder = OUT / "access"
+    folder.mkdir(exist_ok=True)
+    for host, *_ in HOSTS:
+        lines = []
+        for r in sorted((r for r in web if r[1] == host), key=lambda r: r[0]):
+            t = datetime.strptime(r[0], "%Y-%m-%d %H:%M:%S").strftime("%d/%b/%Y:%H:%M:%S +0530")
+            lines.append(f'{r[2]} - - [{t}] "{r[3]} {r[4]} HTTP/1.1" {r[5]} {r[6]} "-" "{r[7]}"')
+        (folder / f"{host}.access.log").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def main() -> None:
     OUT.mkdir(exist_ok=True)
     normal_traffic()
     php2shell_chain()
     other_attacks()
+    write_access_logs()
     write("web.tsv", ["ts", "host", "client_ip", "method", "path", "status", "bytes", "user_agent"], web)
     write("dns.tsv", ["ts", "host", "query", "rcode"], dns)
     write("conn.tsv", ["ts", "host", "dst_ip", "dst_port", "proto", "bytes_out", "pkts_out", "detail"], conn)

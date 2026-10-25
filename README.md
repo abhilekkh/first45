@@ -132,7 +132,7 @@ The PHP2Shell sample loads a saved Gemma 4 result instantly (the live call takes
 ## Team
 
 - **Abhilekkh Krishna** ([@abhilekkh](https://github.com/abhilekkh))
-- **TEAMMATE NAME** (add GitHub handle)
+- **Jacob Mathew** ([@JacobMathewCS](https://github.com/JacobMathewCS))
 
 Built at **Hacktoberfest x MOSS Hack Day Udupi**, 25 October 2026.
 

@@ -202,6 +202,18 @@ def write_report(threat: dict, findings: list[dict]) -> str:
     return _generate(prompt, temperature=0.3).strip()
 
 
+def fetch_url_text(url: str, max_chars: int = 30000) -> str:
+    """Download a public advisory / news page and return its readable text."""
+    import html
+    import requests
+    resp = requests.get(url, timeout=20, headers={"User-Agent": "First45/0.1 (advisory reader)"})
+    resp.raise_for_status()
+    page = re.sub(r"(?is)<(script|style|noscript|svg|nav|footer|header)[^>]*>.*?</\1>", " ", resp.text)
+    page = re.sub(r"(?s)<[^>]+>", " ", page)
+    text = re.sub(r"\s+", " ", html.unescape(page)).strip()
+    return text[:max_chars]
+
+
 def read_pdf_text(pdf_bytes: bytes) -> str:
     """PDF advisory -> plain text (Gemma then reads the text)."""
     from io import BytesIO

@@ -59,7 +59,46 @@ def load_logs(folder: Path = LOGS) -> dict[str, pd.DataFrame]:
             if col in df:
                 df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
         logs[name] = df
+    access_dir = folder / "access"
+    if access_dir.is_dir():  # real nginx/Apache access logs, one file per server
+        parts = [parse_access_log(f.read_text(encoding="utf-8"), f.name.split(".")[0])
+                 for f in sorted(access_dir.glob("*.log"))]
+        if parts:
+            logs["web"] = pd.concat(parts, ignore_index=True)
     return logs
+
+
+# ------------------------------------------------- real access-log parsing ---
+# nginx / Apache "combined" (and "common") format, e.g.
+# 85.11.167.243 - - [22/Oct/2026:09:52:00 +0530] "POST /index.php HTTP/1.1" 200 74 "-" "curl/8.5"
+ACCESS_RE = re.compile(
+    r'^(?P<ip>\S+) \S+ \S+ \[(?P<ts>[^\]]+)\] "(?P<method>[A-Z]+) (?P<path>\S+)[^"]*" '
+    r'(?P<status>\d{3}) (?P<bytes>\d+|-)(?: "[^"]*" "(?P<ua>[^"]*)")?')
+
+
+def parse_access_log(text: str, host: str = "uploaded-server") -> pd.DataFrame:
+    """Real nginx/Apache access log text -> First45 web table. Unparseable lines are skipped."""
+    rows = []
+    for line in text.splitlines():
+        m = ACCESS_RE.match(line.strip())
+        if not m:
+            continue
+        ts = pd.to_datetime(m["ts"], format="%d/%b/%Y:%H:%M:%S %z", errors="coerce")
+        if pd.isna(ts):
+            continue
+        rows.append({"ts": ts.tz_localize(None) if ts.tzinfo is not None else ts,
+                     "host": host, "client_ip": m["ip"], "method": m["method"], "path": m["path"],
+                     "status": int(m["status"]), "bytes": 0 if m["bytes"] == "-" else int(m["bytes"]),
+                     "user_agent": m["ua"] or ""})
+    return pd.DataFrame(rows, columns=["ts", "host", "client_ip", "method", "path", "status", "bytes", "user_agent"])
+
+
+def logs_from_access_log(text: str, host: str = "uploaded-server") -> dict[str, pd.DataFrame]:
+    """Build a logs dict from one real access log (no DNS/connection data)."""
+    empty_dns = pd.DataFrame(columns=["ts", "host", "query", "rcode"])
+    empty_conn = pd.DataFrame(columns=["ts", "host", "dst_ip", "dst_port", "proto", "bytes_out", "pkts_out", "detail"])
+    inv = pd.DataFrame([{"host": host, "ip": "-", "role": "uploaded log", "php_version": "unknown"}])
+    return {"web": parse_access_log(text, host), "dns": empty_dns, "conn": empty_conn, "inventory": inv}
 
 
 def _f(host, stage, ts, family, detector, severity, actor, evidence) -> dict:
@@ -211,7 +250,7 @@ def _ver(v: str) -> tuple:
 
 
 def patch_status(php: str, threat: dict | None) -> str:
-    if not threat or php in ("", "none"):
+    if not threat or php in ("", "none", "unknown"):
         return "n/a"
     branch = ".".join(php.split(".")[:2])
     if branch in threat.get("no_fix_branches", []):
