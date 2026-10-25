@@ -85,10 +85,30 @@ def stop_sim() -> None:
 
 
 def run_scan(seconds: int, loopback: bool) -> None:
-    bar = st.progress(0.0, text=f"Watching every connection on this computer for {seconds} s")
+    # Live phase console: show the detection happening step by step, not a black box.
+    console = st.empty()
+    steps: list[str] = []
+
+    def show(line: str) -> None:
+        steps.append(line)
+        console.code("\n".join(steps), language=None)
+
+    show(f"Watching every live network connection on this computer for {seconds} s ...")
+    bar = st.progress(0.0, text="Watching connections  0%")
     samples = dg.watch(seconds, progress=lambda f: bar.progress(f, text=f"Watching connections  {int(f * 100)}%"))
     bar.empty()
+    conns = sum(len(rows) for _, rows in samples)
+    show(f"Captured {len(samples)} snapshots, {conns} socket observations.")
+    time.sleep(0.3)
+    show("Linking each connection to the program (PID) that opened it ...")
+    time.sleep(0.3)
+    show("Checking: advisory attacker IPs/ports, beaconing rhythm, scanning, outbound flood, temp-folder origin ...")
+    time.sleep(0.3)
     ss.dev_result = dg.analyse(samples, threat, include_loopback=loopback)
+    flagged = ss.dev_result["stats"]["flagged"]
+    show(f"Done. {ss.dev_result['stats']['programs']} programs seen, {flagged} flagged.")
+    time.sleep(0.4)
+    console.empty()
     if ss.dev_result["findings"]:
         ss.last_findings = ss.dev_result["findings"]       # kept so Gemma can explain after a clean re-scan
     ss.dev_scanned_at = datetime.now().strftime("%H:%M:%S")

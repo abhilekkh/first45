@@ -37,25 +37,28 @@ LOGO = """<svg width="26" height="26" viewBox="0 0 32 32" fill="none" aria-hidde
  stroke-linecap="round" stroke-linejoin="round"/></svg>"""
 
 
-def _apply_native_theme(mode: str) -> None:
-    """Give Streamlit's built-in widgets (inputs, tables, code) the same colours."""
-    t = THEMES[mode]
-    for key, value in (("theme.base", mode), ("theme.primaryColor", t["accent"]),
-                       ("theme.backgroundColor", t["bg"]), ("theme.secondaryBackgroundColor", t["surface2"]),
-                       ("theme.textColor", t["text"])):
-        try:
-            st._config.set_option(key, value)
-        except Exception:
-            pass
-
-
 def _css(mode: str) -> str:
     t = THEMES[mode]
     tokens = ";".join(f"--{k}:{v}" for k, v in t.items())
     return f"""<style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
-:root{{{tokens}}}
-html,body,.stApp,[data-testid="stAppViewContainer"]{{background:var(--bg)!important;color:var(--text)}}
+:root{{{tokens};color-scheme:{mode}}}
+html,body,.stApp,[data-testid="stAppViewContainer"]{{background:var(--bg)!important;color:var(--text);
+  color-scheme:{mode}!important}}
+/* Draw radio/checkbox markers from our own tokens so they read correctly in both
+   themes (the native color-scheme is overridden by Streamlit's config otherwise). */
+.stRadio input[type="radio"],.stCheckbox input[type="checkbox"]{{appearance:none!important;
+  -webkit-appearance:none!important;width:15px!important;height:15px!important;flex:0 0 15px;
+  border:1.5px solid var(--muted)!important;background:var(--surface)!important;position:relative;
+  cursor:pointer;margin:0}}
+.stRadio input[type="radio"]{{border-radius:50%}}
+.stCheckbox input[type="checkbox"]{{border-radius:4px}}
+.stRadio input[type="radio"]:checked,.stCheckbox input[type="checkbox"]:checked{{
+  border-color:var(--accent)!important;background:var(--accent)!important}}
+.stRadio input[type="radio"]:checked::after{{content:"";position:absolute;inset:4px;border-radius:50%;
+  background:var(--accent-ink)}}
+.stCheckbox input[type="checkbox"]:checked::after{{content:"";position:absolute;left:4px;top:1px;width:4px;
+  height:8px;border:solid var(--accent-ink);border-width:0 2px 2px 0;transform:rotate(45deg)}}
 .stApp, .stApp p, .stApp li, .stApp label, .stApp input, .stApp textarea, .stApp button,
 .stApp [data-testid="stMarkdownContainer"]{{font-family:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif}}
 [data-testid="stIconMaterial"],.material-symbols-rounded{{font-family:'Material Symbols Rounded'!important}}
@@ -142,6 +145,10 @@ section[data-testid="stSidebar"]{{background:var(--surface)!important;border-rig
 .stButton button[kind="primary"] p,.stButton button[data-testid="stBaseButton-primary"] p{{color:var(--accent-ink)!important}}
 .stButton button[kind="primary"]:hover{{filter:brightness(1.08)}}
 .stButton button:disabled{{opacity:.42;cursor:not-allowed;filter:none}}
+[data-testid="stPopoverButton"]{{background:var(--surface)!important;color:var(--text)!important;
+  border:1px solid var(--border)!important;border-radius:7px}}
+[data-testid="stPopoverButton"]:hover{{border-color:var(--accent)!important}}
+[data-testid="stPopoverButton"] p{{color:var(--text)!important}}
 .f45-ev+div,.f45-ev{{margin-bottom:.35rem}}
 [data-testid="stAlert"]{{border-radius:8px}}
 [data-testid="stCode"] pre,.stCode pre{{background:var(--code)!important;border:1px solid var(--border);border-radius:8px}}
@@ -172,6 +179,76 @@ section[data-testid="stSidebar"]{{background:var(--surface)!important;border-rig
 .f45-ev{{font-family:'IBM Plex Mono',monospace;font-size:.8rem;color:var(--muted)}}
 .f45-foot{{margin-top:48px;padding:18px 0 8px;border-top:1px solid var(--border);color:var(--muted);
   font-size:.82rem;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}}
+
+/* ---- NATIVE Streamlit widgets: driven by the same tokens so they switch with the theme ---- */
+/* text inputs, number inputs, text areas */
+.stTextInput input,.stNumberInput input,.stTextArea textarea,[data-baseweb="input"],
+[data-baseweb="textarea"],[data-baseweb="base-input"]{{background:var(--surface2)!important;
+  color:var(--text)!important;border-color:var(--border)!important;caret-color:var(--text)}}
+.stTextInput input::placeholder,.stTextArea textarea::placeholder{{color:var(--muted)!important}}
+.stTextInput div[data-baseweb="input"],.stTextArea div[data-baseweb="textarea"]{{border-radius:7px}}
+.stTextInput input:focus,.stTextArea textarea:focus,
+div[data-baseweb="input"]:focus-within,div[data-baseweb="textarea"]:focus-within{{
+  border-color:var(--accent)!important;box-shadow:0 0 0 1px var(--accent)}}
+/* selectbox / multiselect / popover triggers (baseweb select + popovers) */
+[data-baseweb="select"]>div,[data-baseweb="select"] div[role="button"]{{background:var(--surface2)!important;
+  border-color:var(--border)!important;color:var(--text)!important}}
+[data-baseweb="popover"] [role="listbox"],[data-baseweb="menu"],[data-baseweb="menu"] li,
+[data-baseweb="popover"] div{{background:var(--surface)!important;color:var(--text)!important}}
+[data-baseweb="menu"] li:hover{{background:var(--surface2)!important}}
+/* radio + checkbox labels and marks */
+.stRadio label p,.stCheckbox label p,.stToggle label p,.stSlider label,.stSelectbox label,
+.stTextInput label,.stTextArea label,.stNumberInput label,.stFileUploader label,
+.stRadio label,.stCheckbox label{{color:var(--text)!important}}
+[data-testid="stWidgetLabel"] p,[data-testid="stWidgetLabel"]{{color:var(--muted)!important}}
+/* file uploader dropzone */
+[data-testid="stFileUploaderDropzone"],[data-testid="stFileUploader"] section{{
+  background:var(--surface2)!important;border:1px dashed var(--border)!important;color:var(--text)!important}}
+[data-testid="stFileUploaderDropzone"] *{{color:var(--text)!important}}
+/* slider track + handle */
+.stSlider [data-baseweb="slider"] [role="slider"]{{background:var(--accent)!important}}
+.stSlider [data-baseweb="slider"] div[data-testid="stSliderTrack"]{{background:var(--border)!important}}
+.stSlider [data-testid="stThumbValue"],.stSlider [data-testid="stTickBarMin"],
+.stSlider [data-testid="stTickBarMax"]{{color:var(--muted)!important}}
+/* toggle + checkbox box */
+[data-baseweb="checkbox"] span[data-testid="stWidgetLabel"]{{color:var(--text)!important}}
+.stCheckbox [data-baseweb="checkbox"] div:first-child,
+[role="checkbox"]{{border-color:var(--border)!important}}
+[role="checkbox"][aria-checked="true"],[data-baseweb="checkbox"] [aria-checked="true"]{{
+  background:var(--accent)!important;border-color:var(--accent)!important}}
+/* segmented control (the theme switch + any other) */
+[data-testid="stSegmentedControl"] button,div[data-baseweb="button-group"] button{{
+  background:var(--surface)!important;color:var(--muted)!important;border-color:var(--border)!important}}
+[data-testid="stSegmentedControl"] button[aria-checked="true"],
+[data-testid="stSegmentedControl"] button[kind="segmented_controlActive"]{{
+  background:var(--surface2)!important;color:var(--text)!important;box-shadow:inset 0 -2px 0 var(--accent)}}
+/* dataframe / tables */
+[data-testid="stDataFrame"],[data-testid="stDataFrameResizable"],.stDataFrame{{
+  background:var(--surface)!important;border:1px solid var(--border)!important;border-radius:8px}}
+[data-testid="stDataFrame"] [role="columnheader"],[data-testid="stDataFrame"] [role="gridcell"]{{
+  background:var(--surface)!important;color:var(--text)!important;border-color:var(--border)!important}}
+[data-testid="stTable"] table,[data-testid="stTable"] th,[data-testid="stTable"] td{{
+  background:var(--surface)!important;color:var(--text)!important;border-color:var(--border)!important}}
+/* expander header, popover panel, toasts, tabs */
+[data-testid="stExpander"] summary,[data-testid="stExpander"] summary p{{color:var(--text)!important}}
+[data-testid="stExpander"] summary:hover{{color:var(--accent)!important}}
+[data-testid="stExpander"] details>div{{background:var(--surface)!important}}
+[data-testid="stPopoverBody"],[data-testid="stPopover"] [data-baseweb="popover"] div{{
+  background:var(--surface)!important;color:var(--text)!important;border-color:var(--border)!important}}
+[data-testid="stToast"]{{background:var(--surface)!important;color:var(--text)!important;
+  border:1px solid var(--border)!important}}
+.stTabs [data-baseweb="tab"]{{color:var(--muted)!important}}
+.stTabs [aria-selected="true"]{{color:var(--text)!important}}
+/* progress bar + spinner */
+.stProgress [data-testid="stProgressBar"]>div{{background:var(--accent)!important}}
+.stProgress [data-testid="stProgressBar"]{{background:var(--border)!important}}
+/* alerts keep readable text in both modes */
+[data-testid="stAlert"]{{color:var(--text)}}
+[data-testid="stAlert"] p,[data-testid="stAlert"] div{{color:var(--text)!important}}
+/* metric delta + help icons */
+[data-testid="stMetricDelta"]{{color:var(--muted)!important}}
+.stMarkdown,.stCaption,[data-testid="stCaptionContainer"] p{{color:var(--muted)}}
+.stApp p,.stApp li{{color:var(--text)}}
 </style>"""
 
 
@@ -180,10 +257,9 @@ def setup(page: str, title: str) -> str:
     st.set_page_config(page_title=title, page_icon=":material/shield:", layout="wide",
                        initial_sidebar_state="collapsed")
     ss = st.session_state
-    if "theme" not in ss:
-        ss.theme = st.get_option("theme.base") if st.get_option("theme.base") in THEMES else "dark"
-    if st.get_option("theme.base") != ss.theme:
-        _apply_native_theme(ss.theme)
+    ss.setdefault("theme", "dark")           # one source of truth, shared across both pages
+    if ss.theme not in THEMES:
+        ss.theme = "dark"
     active = {"app": 3, "device": 4}.get(page, 0)
     st.markdown(_css(ss.theme) + f"""<style>.st-key-f45nav [data-testid="stColumn"]:nth-child({active}) a p
       {{color:var(--text)!important;font-weight:600}}
@@ -198,12 +274,14 @@ def setup(page: str, title: str) -> str:
         l2.page_link("pages/2_Device_Guard.py", label="Device Guard")
         ext.markdown(f'<div class="f45-ext"><a href="{REPO_URL}" target="_blank">GitHub</a></div>',
                      unsafe_allow_html=True)
-        choice = mode.segmented_control("Theme", ["Light", "Dark"], default=ss.theme.title(),
-                                        key=f"theme_pick_{page}", label_visibility="collapsed")
-        if choice and choice.lower() != ss.theme:
-            ss.theme = choice.lower()
-            _apply_native_theme(ss.theme)
-            st.rerun()
+        # A plain button is the most reliable single-click switch: a click returns True
+        # on that same run, with none of segmented_control's default-vs-stored-state
+        # quirks. It shows the mode it will switch TO; ss.theme (shared session_state)
+        # carries the choice across both pages.
+        switch_to = "light" if ss.theme == "dark" else "dark"
+        if mode.button(f"{switch_to.title()} mode", key=f"theme_btn_{page}", width="stretch"):
+            ss.theme = switch_to
+            st.rerun()                       # re-inject the CSS for the new mode
     return ss.theme
 
 

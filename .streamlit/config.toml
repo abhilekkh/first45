@@ -1,0 +1,13 @@
+# First45 - first-paint defaults only. Live light/dark switching is done in ui.py
+# by injecting a CSS token block (see ui.setup); these values just avoid a flash
+# of mismatched native-widget colours before that CSS loads.
+[theme]
+base = "dark"
+primaryColor = "#4d8dff"
+backgroundColor = "#0b0f14"
+secondaryBackgroundColor = "#161c25"
+textColor = "#e6edf3"
+font = "sans serif"
+
+[browser]
+gatherUsageStats = false

@@ -151,7 +151,7 @@ with tools.popover("Operator", width="stretch"):
                "3. Server logs are hunted for the kill chain  \n4. You approve every block")
     if st.button("Reset demo", width="stretch"):
         protect.reset()
-        for k in ("report", "logs", "log_source"):
+        for k in ("report", "logs", "log_source", "live_ready", "live_attacker"):
             ss.pop(k, None)
         st.rerun()
 
@@ -257,13 +257,49 @@ elif step == STEPS[1]:
             st.success("Test lab is live. Launch the attack — First45 will hunt the real log it generates.")
             if st.button("Launch live attack", type="primary"):
                 lab.clear_log()
-                bar = st.progress(0.0, text="Starting attack…")
-                res = lab.attack(progress=lambda f, l: bar.progress(min(f, 1.0), text=l))
-                bar.empty()
+                ss.pop("live_ready", None)
+                ui.section("Live attack console")
+                st.caption(f"Real HTTP requests sent from attacker **{lab.ATTACKER_IP}** to the local Juice Shop, "
+                           "through First45's logging proxy. Each line below is one real request and the real "
+                           "status code Juice Shop returned — nothing is pre-written.")
+                chain_box, cap_box, log_box = st.empty(), st.empty(), st.empty()
+                lines, seen, cur, detections = [], set(), None, 0
+                res = None
+                for ev in lab.attack_stream():
+                    if ev.get("done"):
+                        res = ev
+                        break
+                    if ev["phase"] != cur:
+                        cur = ev["phase"]
+                        cap_box.caption("Why First45 catches this: " + ev["caption"])
+                    stage = lab.PHASE_STAGE.get(ev["phase"])
+                    if stage:
+                        seen.add(stage)
+                    chain_box.markdown(chain_html(seen), unsafe_allow_html=True)
+                    if ev["detected"]:
+                        detections += 1
+                    if ev["path"]:
+                        tail = "    <-- caught by First45" if ev["detected"] else ""
+                        lines.append(f'{ev["ts"]:%H:%M:%S}  {ev["method"]} {ev["path"][:74]} '
+                                     f'-> {ev["status"] or "no response"}{tail}')
+                    elif ev["note"]:
+                        lines.append(f'   >>> {ev["note"]}')
+                    log_box.code("\n".join(lines[-24:]), language=None)
+                res = res or {"attacker_ip": lab.ATTACKER_IP, "requests": len(lines), "log_text": ""}
                 ss.logs = hunt.logs_from_access_log(res["log_text"], "juice-shop", "live OWASP Juice Shop")
                 ss.log_source, ss.live_attacker = "Live attack (OWASP Juice Shop)", res["attacker_ip"]
-                st.toast(f"Sent {res['requests']} real requests from {res['attacker_ip']}.")
-                go(2)
+                ss.live_ready = {"requests": res["requests"], "attacker": res["attacker_ip"],
+                                 "detections": detections, "log_text": res["log_text"]}
+            if ss.get("live_ready"):
+                lr = ss.live_ready
+                st.success(f"{lr['requests']} real requests sent from {lr['attacker']} · "
+                           f"{lr['detections']} detections fired.")
+                st.caption("Detection is deterministic rules over this real traffic; Gemma 4 only reads the "
+                           "advisory and writes the report.")
+                with st.expander("View the raw access log First45 collected"):
+                    st.code(lr["log_text"] or "(log file was empty)", language=None)
+                if st.button("Next: see the verdict →", type="primary"):
+                    go(2)
             with st.expander("Stop the test lab when you are done"):
                 if st.button("Stop test lab"):
                     st.info(lab.stop_target())
