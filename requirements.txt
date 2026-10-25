@@ -1,0 +1,8 @@
+# First45 dependencies (all open source)
+google-genai>=1.0      # Apache-2.0 - calls Gemma 4 through the Gemini API
+python-dotenv>=1.0     # BSD-3    - loads GEMINI_API_KEY from .env
+streamlit>=1.40        # Apache-2.0 - web UI
+pandas>=2.2            # BSD-3    - log tables
+pyyaml>=6.0            # MIT      - writes Sigma rules (YAML)
+pypdf>=5.0             # BSD-3    - reads PDF advisories
+pillow>=11.0           # MIT-CMU  - image handling for screenshots

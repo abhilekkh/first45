@@ -1,0 +1,30 @@
+SECURITY ADVISORY SUMMARY - PHP2Shell (compiled by the First45 team on 25 Oct 2026 from public reporting;
+sources: The Hacker News 2026-10 articles on PHP2Shell, Patchstack, Picus Security, watchTowr)
+
+Name: PHP2Shell
+CVEs: CVE-2026-109618, CVE-2026-109619
+Severity: CVSS 9.2 (critical)
+Type: Unauthenticated remote code execution in the PHP engine (core), triggered by specially crafted HTTP requests.
+Applications with clean code (WordPress, Drupal, Joomla) are still exposed because the flaw is in PHP itself.
+The vulnerable code dates back to PHP 5.4.
+
+Disclosed: 21 October 2026. First exploit attempt seen the same day at 13:05 UTC.
+Within 45 minutes of disclosure: tens of thousands of exploit attempts (Cloudflare). Millions by 22 October.
+
+Fixed versions: PHP 8.5.12, 8.4.27, 8.3.36, 8.2.35.
+No fix available for PHP 7.4, 8.0 and 8.1: move to a supported branch or a vendor backport.
+
+Observed attack chain (Mirai variant "Potassium"):
+1. Exploit attempt: crafted HTTP request to a PHP endpoint. Some attempts try to drop a web shell via a server-side PHP session file.
+   Attack source IPs: 85.11.167[.]243, 217.60.242[.]76, 45.198.224[.]169. Exploit tooling host: 206.188.197[.]105 (port 9999).
+2. Loader: compromised host contacts loader 92.118.112[.]100, which delivers the Mirai variant.
+3. Bootstrap: DNS query for thunder.godofthunder[.]st (resolves to 134.199.154[.]64), HTTP request, checks for a Linux ELF payload.
+4. Command and control: TCP port 50792 on 134.199.154[.]64. DNS fallback via public resolvers 8.8.8.8, 1.1.1.1, 1.0.0.1.
+5. Impact: DDoS floods (ICMP, TCP, UDP, OpenVPN). 24 attack commands.
+
+Recommended actions:
+- Patch to a fixed PHP version.
+- Block the IPs and domain above; alert on outbound TCP 50792.
+- Monitor for unexpected ELF downloads and DNS lookups of the C2 domain.
+- Inspect web servers and PHP session files for web shells.
+- Apply outbound egress filtering; isolate hosts that contacted the indicators.
