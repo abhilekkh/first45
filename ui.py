@@ -66,18 +66,17 @@ html,body,.stApp,[data-testid="stAppViewContainer"]{{background:var(--bg)!import
 h1,h2,h3,h4{{color:var(--text)!important;letter-spacing:-.015em;font-family:'IBM Plex Sans',sans-serif!important}}
 .stApp a{{color:var(--accent)}}
 
-/* ---- calm animated background: drifting dot grid + soft light ---- */
-.stApp::before{{content:"";position:fixed;inset:-40px;z-index:0;pointer-events:none;
+/* ---- calm STATIC background: dot grid + soft light (no animation = no lag) ----
+   The old version animated two full-viewport fixed layers forever (one of them
+   masked), which repaints every frame and makes the whole app feel sluggish and
+   drops clicks. A static background looks the same at rest and costs nothing. */
+.stApp::before{{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
   background-image:radial-gradient(var(--dot) 1px,transparent 1.2px);background-size:26px 26px;
-  -webkit-mask-image:radial-gradient(ellipse 80% 60% at 50% 0%,#000 40%,transparent 100%);
-  mask-image:radial-gradient(ellipse 80% 60% at 50% 0%,#000 40%,transparent 100%);
-  animation:f45drift 48s linear infinite}}
-.stApp::after{{content:"";position:fixed;z-index:0;pointer-events:none;width:900px;height:900px;
-  left:50%;top:-520px;transform:translateX(-50%);border-radius:50%;
-  background:radial-gradient(circle,var(--glow),transparent 65%);animation:f45breathe 14s ease-in-out infinite}}
-@keyframes f45drift{{from{{transform:translate3d(0,0,0)}}to{{transform:translate3d(26px,26px,0)}}}}
-@keyframes f45breathe{{0%,100%{{opacity:.55}}50%{{opacity:1}}}}
-@media (prefers-reduced-motion:reduce){{.stApp::before,.stApp::after{{animation:none}}}}
+  -webkit-mask-image:radial-gradient(ellipse 80% 55% at 50% 0%,#000 40%,transparent 100%);
+  mask-image:radial-gradient(ellipse 80% 55% at 50% 0%,#000 40%,transparent 100%)}}
+.stApp::after{{content:"";position:fixed;z-index:0;pointer-events:none;width:900px;height:720px;
+  left:50%;top:-460px;transform:translateX(-50%);border-radius:50%;opacity:.8;
+  background:radial-gradient(circle,var(--glow),transparent 65%)}}
 [data-testid="stAppViewContainer"]>*,[data-testid="stMain"]{{position:relative;z-index:1}}
 
 /* ---- chrome: hide Streamlit header + page list (we have our own navbar) ---- */
@@ -87,9 +86,11 @@ header[data-testid="stHeader"]{{background:transparent;height:0}}
 section[data-testid="stSidebar"]{{background:var(--surface)!important;border-right:1px solid var(--border)}}
 
 /* ---- navbar ---- */
-.st-key-f45nav{{position:sticky;top:0;z-index:50;margin-bottom:30px;padding:10px 0;
-  background:var(--bg);box-shadow:0 0 0 100vmax var(--bg),0 1px 0 100vmax var(--border);
-  clip-path:inset(0 -100vmax -1px -100vmax)}}
+/* Full-width bar via a cheap 100vw pseudo-element instead of a 100vmax box-shadow
+   (that shadow repainted a viewport-sized layer on every scroll = jank). */
+.st-key-f45nav{{position:sticky;top:0;z-index:50;margin-bottom:30px;padding:10px 0;background:var(--bg)}}
+.st-key-f45nav::before{{content:"";position:absolute;top:0;bottom:0;left:50%;width:100vw;
+  transform:translateX(-50%);background:var(--bg);border-bottom:1px solid var(--border);z-index:-1}}
 .st-key-f45nav [data-testid="stHorizontalBlock"]{{align-items:center;gap:.5rem;flex-wrap:nowrap!important}}
 .st-key-f45nav [data-testid="stColumn"]{{min-width:0!important;width:auto!important}}
 @media (max-width:900px){{.f45-brand small{{display:none}}
@@ -100,7 +101,10 @@ section[data-testid="stSidebar"]{{background:var(--surface)!important;border-rig
 .f45-brand{{display:flex;align-items:center;gap:10px;font-weight:700;font-size:1.08rem;color:var(--text)}}
 .f45-brand small{{font-weight:500;color:var(--muted);font-size:.78rem;border-left:1px solid var(--border);
   padding-left:10px;margin-left:2px}}
-.st-key-f45nav [data-testid="stPageLink"] a{{border-radius:6px;padding:4px 10px;background:transparent}}
+.st-key-f45nav [data-testid="stPageLink"] a{{border-radius:6px;padding:7px 12px;background:transparent;
+  display:flex;align-items:center;min-height:36px}}
+/* give every nav control a comfortable click target */
+.st-key-f45nav .stButton button{{min-height:38px}}
 .st-key-f45nav [data-testid="stPageLink"] a p{{color:var(--muted)!important;font-weight:500;font-size:.92rem;
   white-space:nowrap;overflow:visible}}
 .st-key-f45nav [data-testid="stPageLink"],.st-key-f45nav [data-testid="stPageLink"] *{{overflow:visible!important;
