@@ -25,12 +25,12 @@ LOGS = Path(__file__).resolve().parent / "demo_logs"
 # Kill chain, in order. Index = how far an attack got.
 STAGES = ["recon", "exploit_attempt", "web_shell", "loader_download", "c2_contact", "ddos"]
 STAGE_LABEL = {
-    "recon": "🔍 Recon / scan",
-    "exploit_attempt": "🟡 Exploit attempt",
-    "web_shell": "🟠 Web shell",
-    "loader_download": "🔴 Malware download",
-    "c2_contact": "🔴 Botnet C2 contact",
-    "ddos": "⚫ DDoS / flood",
+    "recon": "Recon / scan",
+    "exploit_attempt": "Exploit attempt",
+    "web_shell": "Web shell",
+    "loader_download": "Malware download",
+    "c2_contact": "Botnet C2 contact",
+    "ddos": "DDoS / flood",
 }
 COMPROMISE_STAGES = {"web_shell", "loader_download", "c2_contact", "ddos"}
 
@@ -93,11 +93,11 @@ def parse_access_log(text: str, host: str = "uploaded-server") -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["ts", "host", "client_ip", "method", "path", "status", "bytes", "user_agent"])
 
 
-def logs_from_access_log(text: str, host: str = "uploaded-server") -> dict[str, pd.DataFrame]:
+def logs_from_access_log(text: str, host: str = "uploaded-server", role: str = "uploaded log") -> dict[str, pd.DataFrame]:
     """Build a logs dict from one real access log (no DNS/connection data)."""
     empty_dns = pd.DataFrame(columns=["ts", "host", "query", "rcode"])
     empty_conn = pd.DataFrame(columns=["ts", "host", "dst_ip", "dst_port", "proto", "bytes_out", "pkts_out", "detail"])
-    inv = pd.DataFrame([{"host": host, "ip": "-", "role": "uploaded log", "php_version": "unknown"}])
+    inv = pd.DataFrame([{"host": host, "ip": "-", "role": role, "php_version": "unknown"}])
     return {"web": parse_access_log(text, host), "dns": empty_dns, "conn": empty_conn, "inventory": inv}
 
 
@@ -170,13 +170,21 @@ def brute_force(logs, threshold: int = 20, window: str = "5min") -> list[dict]:
 
 
 def recon_scan(logs, threshold: int = 30) -> list[dict]:
+    """Many distinct paths from one IP that the server rejected (404/403/5xx) = scanning.
+
+    Real vulnerability scanners probe hundreds of endpoints; most are refused. We key on
+    the breadth of refused paths, not one status code, so it works on normal servers
+    (missing files -> 404) and on API/SPA servers (unknown routes -> 403/500) alike.
+    """
     web = logs["web"]
-    nf = web[web["status"] == 404]
+    refused = web[web["status"] >= 400]
     out = []
-    for (host, ip), g in nf.groupby(["host", "client_ip"]):
-        if g["path"].nunique() >= threshold:
+    for (host, ip), g in refused.groupby(["host", "client_ip"]):
+        paths = g["path"].nunique()
+        if paths >= threshold:
+            examples = ", ".join(p.split("?")[0] for p in list(dict.fromkeys(g["path"]))[:2])
             out.append(_f(host, "recon", g["ts"].min(), "behaviour", "Vulnerability scan",
-                          "low", ip, f"{g['path'].nunique()} different missing paths probed (e.g. /.env, /.git/config)"))
+                          "low", ip, f"{paths} different paths probed and refused (e.g. {examples})"))
     return out
 
 
@@ -255,12 +263,12 @@ def patch_status(php: str, threat: dict | None) -> str:
     branch = ".".join(php.split(".")[:2])
     if branch in threat.get("no_fix_branches", []):
         fixed = sorted(threat.get("fixed_versions", []), key=_ver)
-        return f"❌ PHP {php}: NO PATCH exists - upgrade to {fixed[0] if fixed else 'a supported branch'}+"
+        return f"PHP {php}: NO PATCH exists - upgrade to {fixed[0] if fixed else 'a supported branch'}+"
     for f in threat.get("fixed_versions", []):
         if f.startswith(branch + "."):
-            return (f"✅ PHP {php} is patched" if _ver(php) >= _ver(f)
-                    else f"⚠️ PHP {php}: update to {f}")
-    return f"⚠️ PHP {php}: check vendor advisory"
+            return (f"PHP {php} is patched" if _ver(php) >= _ver(f)
+                    else f"PHP {php}: update to {f}")
+    return f"PHP {php}: check vendor advisory"
 
 
 def hunt(logs: dict, threat: dict | None, blocked: set[str] | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -285,13 +293,13 @@ def hunt(logs: dict, threat: dict | None, blocked: set[str] | None = None) -> tu
         reached = [s for s in STAGES if s in set(live["stage"])]
         furthest = reached[-1] if reached else None
         if not len(hf):
-            verdict = "🟢 SAFE"
+            verdict = "SAFE"
         elif not len(live):
-            verdict = "🛡️ PROTECTED (all attacker IPs blocked)"
+            verdict = "PROTECTED (all attacker IPs blocked)"
         elif set(reached) & COMPROMISE_STAGES:
-            verdict = "🔴 COMPROMISED"
+            verdict = "COMPROMISED"
         else:
-            verdict = "🟡 ATTACKED (not compromised)"
+            verdict = "ATTACKED (not compromised)"
         rows.append({"host": h.host, "ip": h.ip, "role": h.role, "php": h.php_version,
                      "verdict": verdict, "furthest_stage": STAGE_LABEL.get(furthest, "-"),
                      "stages": reached, "alerts": len(hf), "prevented": int(hf["prevented"].sum()),

@@ -77,6 +77,7 @@ advisory into verified indicators, rules and a log hunt. Validated with the refe
 | Component | Licence | Used for |
 |-----------|---------|----------|
 | [google-genai](https://github.com/googleapis/python-genai) | Apache-2.0 | Gemini API client |
+| [psutil](https://github.com/giampaolo/psutil) | BSD-3-Clause | Device Guard: connections and processes on this computer |
 | [Streamlit](https://github.com/streamlit/streamlit) | Apache-2.0 | Web UI |
 | [pandas](https://github.com/pandas-dev/pandas) | BSD-3-Clause | Log analysis |
 | [PyYAML](https://github.com/yaml/pyyaml) | MIT | Sigma YAML |
@@ -92,6 +93,63 @@ advisory into verified indicators, rules and a log hunt. Validated with the refe
 | **Data:** PHP2Shell indicators | public reporting | From [The Hacker News](https://thehackernews.com/2026/10/php2shell-exploit-attempts-hit-millions.html), [Patchstack](https://patchstack.com/articles/php-major-vulnerability-alert-10-2026/), [Picus](https://www.picussecurity.com/resource/php2shell-the-two-critical-php-rce-flaws-cve-2026-109618-cve-2026-109619-explained), [watchTowr](https://watchtowr.com/intelligence/php-cve-2026-109618-faq/) |
 
 Full list in [NOTICE.md](NOTICE.md).
+
+## Prove it on real attacks: the live test lab
+
+The demo network in step 02 is synthetic (safe, offline). To remove any doubt that detection
+is real and not hard-coded, step 02 also offers **"Live attack on a local test site (OWASP
+Juice Shop)"**. This mirrors how security products are demoed on testbeds: attack a target you
+own, never a third party.
+
+| Piece | What it is |
+|---|---|
+| Target | **OWASP Juice Shop** (the industry-standard intentionally-vulnerable web app), started in Docker on `127.0.0.1:3000` |
+| Collector | A small **logging reverse proxy** (`lab.py`) in front of the target, writing a real nginx-format access log, the way a WAF or reverse proxy sits in front of a web server |
+| Attacker | A controlled OWASP-style script that sends **real HTTP requests**: endpoint/file **recon scan**, **SQL injection**, **XSS**, **path traversal**, and a **brute-force** login run |
+| Detector | First45's own `hunt.py` reads the real log it produced, with nothing pre-written |
+
+One click (**Start test lab**) pulls and runs the container; **Launch live attack** fires the
+requests and takes you to the results. Everything stays on `127.0.0.1`. Juice Shop is built to
+be attacked, so this is legal and safe; First45 never touches a server it does not own. The
+attacker's source IP is shown as `203.0.113.66`, an address reserved for documentation (RFC 5737),
+so the block step has a realistic, blockable IP to act on.
+
+What it shows: recon -> exploit attempt on genuine traffic, then **Block -> Protected** on a
+re-scan. The later kill-chain stages (web shell, malware, C2, DDoS) need host/network data, which
+is exactly what **Device Guard** demonstrates with its simulator. The two halves cover the full
+chain between them. Requires Docker Desktop running; the image is downloaded once (~250 MB).
+
+## Device Guard: is THIS computer part of a botnet?
+
+Server logs show attacks from the outside. **Device Guard** (sidebar page in the app) looks from the inside:
+it watches every network connection on the computer for 10-60 seconds, links each one to the program that
+opened it ([psutil](https://github.com/giampaolo/psutil)), and checks for botnet behaviour with
+deterministic, explainable rules (`device_guard.py`):
+
+| Kill-chain stage | Detector | Rule |
+|---|---|---|
+| Malware landed | Runs from a temp/download folder | program path is in Temp / Downloads / Public |
+| Phones home | Talks to advisory attacker IP / C2 port | IOCs extracted by Gemma 4 **and verified** against the advisory |
+| Phones home | Botnet beaconing | 4+ new connections to one server, 70 % of them on a steady rhythm |
+| Phones home | Botnet port open | listening on a Mirai port (23, 2323, 48101) or an advisory port |
+| Scans to spread | Scanning to spread | 20+ different IPs on one non-web port, at least half never answer (SYN_SENT) |
+| Floods a target | Outbound flood | 100+ simultaneous connections to one target |
+
+**Prevention is human-approved:** tick "I approve" → **Stop program** (no admin needed for your own programs), or
+**Block in firewall** (Windows Firewall rule in + out when First45 runs as administrator; otherwise the exact
+`netsh` command is shown). Every action goes to `state/device_audit.log` with who approved it, and firewall
+blocks have one-click **Undo**. **Keep guarding** re-scans continuously and sends an ntfy/Discord alert on new
+botnet behaviour. **Explain with Gemma 4** turns the findings into a plain-English incident note.
+
+**Safe demo:** `simulate_bot.py` (or **Start simulator** in the sidebar) imitates a Mirai-style bot using
+**only 127.0.0.1**: a fake C2 on port 50792 (the C2 port named in the PHP2Shell advisory) and a "bot" copied
+into Temp that beacons every 3 s and bursts 120 connections. Tick **Include loopback** and scan. Nothing leaves
+the computer.
+
+```bash
+python simulate_bot.py                      # safe fake bot (Ctrl+C to stop)
+python device_guard.py --seconds 20 --loopback   # same check from the command line
+```
 
 ## How to run
 

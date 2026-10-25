@@ -10,6 +10,7 @@ Four simple steps:
 """
 from __future__ import annotations
 
+import importlib
 import ipaddress
 import json
 import mimetypes
@@ -21,30 +22,22 @@ import streamlit as st
 
 import gemma_client
 import hunt
+import lab
 import notify
 import protect
 import rules
+import ui
+
+for _m in (ui, hunt, lab):
+    importlib.reload(_m)   # pick up edits to these modules without restarting the server
 
 ROOT = Path(__file__).resolve().parent
 SAMPLE_ADVISORY = ROOT / "samples" / "php2shell_advisory.txt"
 SAMPLE_THREAT = ROOT / "samples" / "threat_php2shell.json"
 SAMPLE_REPORT = ROOT / "samples" / "report_php2shell.md"
-STEPS = ["① Threat", "② Servers", "③ Results", "④ Fix & report"]
+STEPS = ["01  Threat", "02  Servers", "03  Results", "04  Fix & report"]
 
-st.set_page_config(page_title="First45", page_icon="🛡️", layout="wide")
-st.markdown("""<style>
-.chain{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:6px 0}
-.chip{padding:5px 11px;border-radius:999px;font-size:.88rem;border:1px solid #64748b;opacity:.28}
-.chip.on{opacity:1;font-weight:600}
-.chip.prev{opacity:1;text-decoration:line-through;background:#14532d;color:#dcfce7;border-color:#22c55e}
-.s-recon.on{background:#334155;color:#e2e8f0}
-.s-exploit_attempt.on{background:#facc15;color:#1a1a1a}
-.s-web_shell.on{background:#fb923c;color:#1a1a1a}
-.s-loader_download.on{background:#ef4444;color:#fff}
-.s-c2_contact.on{background:#b91c1c;color:#fff}
-.s-ddos.on{background:#0f0f0f;color:#fff;border-color:#ef4444}
-.big{font-size:1.35rem;font-weight:650;margin:.2rem 0 .6rem}
-</style>""", unsafe_allow_html=True)
+MODE = ui.setup("app", "First45 · Server defense")
 
 # ------------------------------------------------------- plain English ---
 EXPLAIN = {
@@ -91,8 +84,15 @@ def chain_html(hit: set[str], prevented: set[str] = frozenset()) -> str:
     chips = []
     for s in hunt.STAGES:
         cls = "on" if s in hit else ("prev" if s in prevented else "")
-        chips.append(f'<span class="chip s-{s} {cls}">{hunt.STAGE_LABEL[s]}{" 🛡️" if cls == "prev" else ""}</span>')
-    return '<div class="chain">' + " → ".join(chips) + "</div>"
+        chips.append(f'<span class="chip s-{s} {cls}">{hunt.STAGE_LABEL[s]}</span>')
+    return '<div class="chain">' + '<span class="sep">/</span>'.join(chips) + "</div>"
+
+
+VERDICT_LEVEL = {"COMPROMISED": "crit", "ATTACKED": "med", "PROTECTED": "ok", "SAFE": "ok"}
+
+
+def patch_level(text: str) -> str:
+    return "crit" if "NO PATCH" in text else "ok" if "is patched" in text else "low" if text == "n/a" else "med"
 
 
 INTERNAL = [ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8")]
@@ -137,31 +137,29 @@ ss.setdefault("threat", json.loads(SAMPLE_THREAT.read_text(encoding="utf-8")))
 ss.setdefault("threat_source", "PHP2Shell sample")
 
 # ---------------------------------------------------------------- header ---
-st.title("🛡️ First45")
-st.markdown("PHP2Shell was attacked **45 minutes** after it was announced. First45 turns any security advisory into "
-            "working defenses in **45 seconds**, for colleges and small teams with no security staff.")
-step = st.radio("Step", STEPS, horizontal=True, key="step", label_visibility="collapsed")
-
-with st.sidebar:
-    st.subheader("How it works")
-    st.markdown("1. **Gemma 4** (open-weight AI) reads the advisory\n"
-                "2. First45 writes defense rules in open formats\n"
-                "3. It checks your server logs for the attack\n"
-                "4. **You** approve every block")
-    st.divider()
+ui.hero("PHP2Shell · CVE-2026-109618 · CVSS 9.2",
+        "From security advisory to working defenses in 45 seconds.",
+        "PHP2Shell was exploited 45 minutes after disclosure. First45 reads the advisory with Gemma 4, "
+        "hunts your server logs for the kill chain, and drafts defenses you approve, for colleges and small teams "
+        "without a security staff.")
+bar, tools = st.columns([5, 1.3], vertical_alignment="center")
+with bar:
+    step = st.radio("Step", STEPS, horizontal=True, key="step", label_visibility="collapsed")
+with tools.popover("Operator", width="stretch"):
     ss.approver = st.text_input("Your name (for the approval log)", value=ss.get("approver", "IT admin"))
-    if st.button("Reset demo"):
+    st.caption("1. Gemma 4 reads the advisory  \n2. Rules are written in open formats  \n"
+               "3. Server logs are hunted for the kill chain  \n4. You approve every block")
+    if st.button("Reset demo", width="stretch"):
         protect.reset()
         for k in ("report", "logs", "log_source"):
             ss.pop(k, None)
         st.rerun()
-    st.caption("Open source (MIT) · Gemma 4 (Apache 2.0)")
 
 threat = ss.threat
 
 # ======================================================== STEP 1: THREAT ===
 if step == STEPS[0]:
-    st.markdown('<div class="big">What threat are you worried about?</div>', unsafe_allow_html=True)
+    ui.section("What threat are you worried about?")
     choice = st.radio("Advisory", ["PHP2Shell (this week's attack, instant)", "Paste a news / advisory link",
                                    "Paste advisory text", "Upload a PDF or screenshot",
                                    "No advisory: just look for any attack"], label_visibility="collapsed")
@@ -213,7 +211,7 @@ if step == STEPS[0]:
             a, b, c = st.columns(3)
             a.metric("Danger (CVSS, out of 10)", threat.get("cvss") or "?")
             b.metric("Attacker addresses found", len(threat["iocs"]["ips"]) + len(threat["iocs"]["domains"]))
-            c.metric("Checked against the article", f"{nv}/{nv + nu} ✅" if not nu else f"{nv}/{nv + nu} ⚠️")
+            c.metric("Checked against the article", f"{nv}/{nv + nu} verified")
             if threat.get("fixed_versions"):
                 st.success("**Safe versions:** " + ", ".join(threat["fixed_versions"]))
             if threat.get("no_fix_branches"):
@@ -229,10 +227,47 @@ if step == STEPS[0]:
 
 # ======================================================= STEP 2: SERVERS ===
 elif step == STEPS[1]:
-    st.markdown('<div class="big">Which servers should First45 check?</div>', unsafe_allow_html=True)
+    ui.section("Which servers should First45 check?")
     src = st.radio("Logs", ["College network: 5 servers, logs from 22 Oct (demo data)",
+                            "Live attack on a local test site (OWASP Juice Shop, real attack)",
                             "Upload my own server's access.log (nginx or Apache)"], label_visibility="collapsed")
-    if src.startswith("College"):
+    logs = None
+    if src.startswith("Live attack"):
+        st.caption("Starts **OWASP Juice Shop** (a real, intentionally-vulnerable web app) in Docker on this "
+                   "computer, puts a logging reverse proxy in front of it, then fires real OWASP-style attacks "
+                   "(recon scan, SQL injection, XSS, path traversal, brute force). Everything stays on 127.0.0.1 "
+                   "and First45 reads the real traffic log it produces — nothing is pre-written.")
+        ready, dmsg = lab.docker_ready()
+        up_now = lab.target_up()
+        d = st.columns(2)
+        d[0].markdown(ui.badge("Docker running", "ok") if ready else ui.badge("Docker not ready", "crit"),
+                      unsafe_allow_html=True)
+        d[1].markdown(ui.badge("Target up on :3000", "ok") if up_now else ui.badge("Target not started", "low"),
+                      unsafe_allow_html=True)
+        if not ready:
+            st.warning(dmsg)
+        if not up_now:
+            if st.button("Start test lab", type="primary", disabled=not ready):
+                with st.spinner("Pulling the Juice Shop image (first time only, ~250 MB) and starting it…"):
+                    ok, msg = lab.start_target()
+                (st.success if ok else st.error)(msg)
+                if ok:
+                    st.rerun()
+        else:
+            st.success("Test lab is live. Launch the attack — First45 will hunt the real log it generates.")
+            if st.button("Launch live attack", type="primary"):
+                lab.clear_log()
+                bar = st.progress(0.0, text="Starting attack…")
+                res = lab.attack(progress=lambda f, l: bar.progress(min(f, 1.0), text=l))
+                bar.empty()
+                ss.logs = hunt.logs_from_access_log(res["log_text"], "juice-shop", "live OWASP Juice Shop")
+                ss.log_source, ss.live_attacker = "Live attack (OWASP Juice Shop)", res["attacker_ip"]
+                st.toast(f"Sent {res['requests']} real requests from {res['attacker_ip']}.")
+                go(2)
+            with st.expander("Stop the test lab when you are done"):
+                if st.button("Stop test lab"):
+                    st.info(lab.stop_target())
+    elif src.startswith("College"):
         logs = demo_logs()
         st.caption("Real log formats (nginx access logs, DNS and connection logs). Generated for the demo, "
                    "with exploit payloads removed.")
@@ -252,7 +287,7 @@ elif step == STEPS[1]:
     if logs is not None:
         w, d, c = len(logs["web"]), len(logs["dns"]), len(logs["conn"])
         st.write(f"**{len(logs['inventory'])} server(s)** · {w:,} web requests · {d:,} DNS lookups · {c:,} connections")
-        if st.button("🔎 Scan now", type="primary"):
+        if st.button("Scan now", type="primary"):
             bar = st.progress(0, text="Starting…")
             checks = ["Matching the advisory's attacker addresses"] + \
                      [f"Looking for {d.__name__.replace('_', ' ')}" for d in hunt.BEHAVIOUR_DETECTORS]
@@ -266,7 +301,7 @@ elif step == STEPS[1]:
 elif step == STEPS[2]:
     if "logs" not in ss:
         st.info("First choose which servers to check.")
-        if st.button("← Go to step ②"):
+        if st.button("Back to step 02"):
             go(1)
         st.stop()
     findings, summary = hunt.hunt(ss.logs, threat, protect.blocked_ips())
@@ -275,32 +310,30 @@ elif step == STEPS[2]:
     protected = summary[summary["verdict"].str.contains("PROTECTED")]
     clean = summary[summary["verdict"].str.contains("SAFE")]
     head = []
-    if len(infected):
-        head.append(f"🔴 <b>{len(infected)} infected</b>")
-    if len(attacked):
-        head.append(f"🟡 {len(attacked)} attacked but not broken into")
-    if len(protected):
-        head.append(f"🛡️ {len(protected)} now protected")
-    if len(clean):
-        head.append(f"🟢 {len(clean)} clean")
-    st.markdown('<div class="big">' + " · ".join(head) + "</div>", unsafe_allow_html=True)
+    for frame, level, text in ((infected, "crit", "<b>{} infected</b>"), (attacked, "med", "{} attacked, not broken into"),
+                               (protected, "ok", "{} now protected"), (clean, "ok", "{} clean")):
+        if len(frame):
+            head.append(f'<span><span class="f45-dot d-{level}"></span>{text.format(len(frame))}</span>')
+    ui.section("Scan results")
+    st.markdown('<div class="f45-summary">' + "".join(head) + "</div>", unsafe_allow_html=True)
 
-    order = {"🔴": 0, "🟡": 1, "🛡": 2, "🟢": 3}
-    summary["o"] = summary["verdict"].str[0].map(order).fillna(9)
+    order = {"COMPROMISED": 0, "ATTACKED": 1, "PROTECTED": 2, "SAFE": 3}
+    summary["o"] = summary["verdict"].str.split().str[0].map(order).fillna(9)
     for row in summary.sort_values("o").itertuples():
         hf = findings[findings["host"] == row.host] if len(findings) else findings
         live = [s for s in hunt.STAGES if len(hf) and s in set(hf[~hf["prevented"]]["stage"])]
         prev = {s for s in hunt.STAGES if len(hf) and s in set(hf[hf["prevented"]]["stage"])}
         with st.container(border=True):
-            a, b = st.columns([3, 2])
-            a.markdown(f"#### {row.verdict.split(' ', 1)[0]} {row.host}  \n<small>{row.role}</small>", unsafe_allow_html=True)
-            b.markdown(f"**{row.verdict.split(' ', 1)[1]}**  \n{row.patch}")
+            level = VERDICT_LEVEL.get(row.verdict.split()[0], "low")
+            st.markdown(f'<div class="f45-host"><span class="f45-dot d-{level}"></span><b>{row.host}</b>'
+                        f'<span class="role">{row.role}</span>{ui.badge(row.verdict.split(" (")[0], level)}</div>'
+                        f'<div class="f45-patch b-{patch_level(row.patch)}">{row.patch}</div>', unsafe_allow_html=True)
             st.markdown(story(row.host, live) if live else
                         ("All attacks against this server are now blocked." if prev else story(row.host, [])))
             if len(hf):
                 st.markdown(chain_html(set(live), prev), unsafe_allow_html=True)
                 c1, c2 = st.columns([1, 4])
-                if live and c1.button("▶ Replay attack", key=f"rp-{row.host}"):
+                if live and c1.button("Replay attack", key=f"rp-{row.host}"):
                     box = st.empty()
                     seen, lines = set(), []
                     for s in hunt.STAGES:
@@ -327,11 +360,11 @@ elif step == STEPS[2]:
 else:
     if "logs" not in ss:
         st.info("First scan your servers.")
-        if st.button("← Go to step ②"):
+        if st.button("Back to step 02"):
             go(1)
         st.stop()
     findings, summary = hunt.hunt(ss.logs, threat, protect.blocked_ips())
-    st.markdown('<div class="big">Stop the attackers</div>', unsafe_allow_html=True)
+    ui.section("Stop the attackers")
     st.caption("First45 recommends. **You decide.** Every block is written to an approval log and can be undone. "
                "First45 never changes your firewall by itself: it writes a blocklist your web server reads.")
 
@@ -347,50 +380,50 @@ else:
                 a.markdown(f"**{who}** · {hunt.STAGE_LABEL[worst.stage]} · {', '.join(sorted(g['host'].unique()))}  \n"
                            f"{explain(worst.detector)} *({len(g)} alerts)*")
                 if who in blocked:
-                    b.success("🛡️ Blocked")
+                    b.markdown(ui.badge("Blocked", "ok"), unsafe_allow_html=True)
                     if b.button("Undo", key=f"u-{who}"):
                         protect.unblock(who, ss.approver)
                         st.rerun()
-                elif b.button("🛡️ Block", key=f"b-{who}", type="primary"):
+                elif b.button("Block", key=f"b-{who}", type="primary"):
                     protect.approve_block(who, ss.approver, f"{worst.detector} on {', '.join(sorted(g['host'].unique()))}")
                     st.rerun()
         if blocked:
-            st.info("Blocked attackers are now refused. Open step ③ again: their attacks show as 🛡️ prevented.")
+            st.info("Blocked attackers are now refused. Open step 03 again: their attacks show as prevented.")
     else:
         st.success("No attackers to block.")
 
     st.divider()
     left, right = st.columns(2)
     with left:
-        st.markdown("#### 📢 Alert the team")
+        ui.section("Alert the team")
         if st.button("Send alert to admins' phones"):
             lines = [f"{r.host}: {r.verdict}" for r in summary.itertuples()]
             sent = notify.send_alert("First45 security alert", "\n".join(lines))
             st.toast("Sent via " + ", ".join(sent) if sent else
                      "No phone channel configured yet (set NTFY_TOPIC in .env).")
-        st.markdown("#### 📜 Defense files")
+        ui.section("Defense files")
         if threat:
             notes = {".sigma.yml": "for security dashboards (Sigma)", ".rules": "for intrusion detection (Suricata)",
                      ".nginx-deny.conf": "for the web server (nginx)", ".firewall.txt": "firewall commands (Linux / Windows)"}
             for fname, text in rules.all_rules(threat).items():
                 note = next((v for k, v in notes.items() if fname.endswith(k)), "")
-                st.download_button(f"⬇ {fname}  ·  {note}", text, file_name=fname, key=f"dl-{fname}")
+                st.download_button(f"{fname}  ·  {note}", text, file_name=fname, key=f"dl-{fname}")
             with st.expander("Preview the rules"):
                 for fname, text in rules.all_rules(threat).items():
                     st.markdown(f"`{fname}`")
                     st.code(text, language="yaml" if fname.endswith(".yml") else None)
         else:
-            st.caption("Load an advisory in step ① to get advisory-specific rules.")
+            st.caption("Load an advisory in step 01 to get advisory-specific rules.")
         log = protect.audit_log()
         if log:
             with st.expander("Approval log"):
                 st.code("\n".join(log), language=None)
     with right:
-        st.markdown("#### 📝 Incident report (written by Gemma 4)")
+        ui.section("Incident report, written by Gemma 4")
         if "report" not in ss and SAMPLE_REPORT.exists() and ss.get("threat_source", "").startswith("PHP2Shell") \
                 and ss.get("log_source", "").startswith("College"):
             ss.report = SAMPLE_REPORT.read_text(encoding="utf-8")
-        if st.button("✍️ Write the report", type="primary"):
+        if st.button("Write the report", type="primary"):
             hosts = summary.drop(columns=["stages"]).to_dict("records")
             ev = (findings.groupby(["host", "stage", "detector", "actor"]).agg(
                 first_seen=("ts", "min"), times=("ts", "size"), example=("evidence", "first"))
@@ -404,6 +437,8 @@ else:
                 except Exception as error:
                     st.error(f"Gemma could not write the report: {error}")
         if ss.get("report"):
-            st.download_button("⬇ Download report", ss.report, file_name="first45-incident-report.md")
+            st.download_button("Download report (.md)", ss.report, file_name="first45-incident-report.md")
             with st.container(border=True, height=520):
                 st.markdown(ss.report)
+
+ui.footer()

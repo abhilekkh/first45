@@ -202,6 +202,40 @@ def write_report(threat: dict, findings: list[dict]) -> str:
     return _generate(prompt, temperature=0.3).strip()
 
 
+DEVICE_PROMPT = """You are a security assistant helping a student or small-office user with no security team.
+First45 Device Guard watched the network connections on their own computer and flagged the programs below.
+Detection was done by deterministic rules; your job is ONLY to explain. Use ONLY the facts given. Do not invent
+IPs, file names or malware names.
+
+Write Markdown with these sections:
+## What is happening (2-3 plain sentences)
+## Which programs and why (one bullet per program: name, path, the evidence in plain English)
+## Link to the advisory (only if a detection says 'advisory'; otherwise write 'No advisory indicators matched.')
+## What was already done (from the action log; say 'Nothing yet' if empty)
+## Next steps (max 5 numbered, concrete, beginner-friendly: e.g. stop the program, block the IP, full antivirus scan,
+   patch the software named in the advisory, change passwords used on this computer)
+
+ADVISORY SUMMARY:
+{threat}
+
+DEVICE FINDINGS:
+{findings}
+
+ACTION LOG:
+{actions}
+"""
+
+
+def explain_device(threat: dict | None, findings: list[dict], actions: list[str]) -> str:
+    """Device Guard findings -> plain-English Markdown explanation written by Gemma 4."""
+    slim = {k: v for k, v in (threat or {}).items()
+            if k in ("name", "cves", "summary", "product", "fixed_versions", "iocs")}
+    prompt = DEVICE_PROMPT.format(threat=json.dumps(slim, indent=2) if slim else "No advisory loaded.",
+                                  findings=json.dumps(findings, indent=2, default=str),
+                                  actions="\n".join(actions) or "(none)")
+    return _generate(prompt, temperature=0.2).strip()
+
+
 def fetch_url_text(url: str, max_chars: int = 30000) -> str:
     """Download a public advisory / news page and return its readable text."""
     import html

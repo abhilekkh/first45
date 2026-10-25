@@ -7,8 +7,10 @@ When an admin clicks Approve, the IP goes into state/blocklist.json and
 state/nginx-deny.conf (a file the web server can include), and every action is
 written to state/audit.log with time, who approved it and why. Undo is one click.
 
-We never change the operating-system firewall from the app. The generated
+This server step never changes the operating-system firewall. The generated
 firewall commands are shown for the admin to run on their own server.
+(Device Guard, for this computer, can add a firewall rule - but only after a
+human clicks Approve and only when First45 runs as administrator.)
 """
 from __future__ import annotations
 
