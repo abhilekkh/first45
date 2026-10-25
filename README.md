@@ -1,4 +1,4 @@
-# 🛡️ First45
+# First45
 
 **From security advisory to working defenses in 45 seconds — for teams with no security staff.**
 
@@ -29,7 +29,7 @@ rules.py ──► Sigma · Suricata · nginx deny · nftables / netsh
 hunt.py  ◄── server logs (web, DNS, connections, inventory)
    │  A. advisory detectors (IOCs)   B. behaviour detectors (no advisory needed)
    ▼
-kill chain per host:  🔍 recon → 🟡 exploit → 🟠 web shell → 🔴 malware → 🔴 C2 → ⚫ DDoS
+kill chain per host:  recon -> exploit -> web shell -> malware -> C2 -> DDoS
    ▼
 protect.py (approve / undo / audit)   notify.py (ntfy / Discord)   gemma_client.write_report()
    ▼
@@ -200,10 +200,10 @@ AI coding tools used to **build** First45 (these are not part of the open-source
 
 | Tool | What it produced |
 |------|------------------|
-| **Claude** (Anthropic, via the Claude app) | First drafts of all code files (`gemma_client.py`, `hunt.py`, `rules.py`, `protect.py`, `notify.py`, `app.py`, `make_demo_logs.py`, skill scripts), the Agent Skill `SKILL.md`, this README, NOTICE and CONTRIBUTING, and the PHP2Shell advisory summary in `samples/` (compiled from the cited public sources). |
+| **Claude** (Anthropic) | First drafts of all Python files (`gemma_client.py`, `hunt.py`, `rules.py`, `protect.py`, `notify.py`, `app.py`, `ui.py`, `device_guard.py`, `simulate_bot.py`, `lab.py`, `make_demo_logs.py`, the `pages/` scripts and the skill scripts), the Agent Skill `SKILL.md`, this README, NOTICE and CONTRIBUTING, and the PHP2Shell advisory summary in `samples/` (compiled from the cited public sources). |
 
 The team chose the idea and scope, made the design decisions, set up the API key and environment, ran and tested every
-step, reviewed the code, and can explain every file. *(Add any other AI tools you used here.)*
+step, reviewed the code, and can explain every file.
 
 ## License
 
