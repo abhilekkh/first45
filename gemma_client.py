@@ -16,6 +16,7 @@ Usage (command line):
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import mimetypes
 import os
@@ -33,6 +34,38 @@ load_dotenv(ROOT / ".env")
 
 DEFAULT_MODEL = "gemma-4-26b-a4b-it"
 MODEL = os.getenv("GEMMA_MODEL", DEFAULT_MODEL)
+
+# A 26B model's first read of a NEW advisory takes seconds - that is the model
+# thinking, not slow code, and no code change makes a fresh LLM call sub-second.
+# But reading the SAME advisory again should be instant, so extract_threat()
+# caches its result on disk keyed by the model + exact input. Any advisory read
+# once (including the demo ones, once warmed) then returns in milliseconds.
+CACHE_DIR = ROOT / "state" / "gemma_cache"
+
+
+def _cache_key(kind: str, payload: bytes) -> str:
+    h = hashlib.sha256()
+    h.update(MODEL.encode("utf-8"))
+    h.update(b"\x00")
+    h.update(kind.encode("utf-8"))
+    h.update(b"\x00")
+    h.update(payload)
+    return h.hexdigest()[:40]
+
+
+def _cache_get(key: str) -> dict | None:
+    try:
+        return json.loads((CACHE_DIR / f"{key}.json").read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+
+
+def _cache_put(key: str, value: dict) -> None:
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        (CACHE_DIR / f"{key}.json").write_text(json.dumps(value), encoding="utf-8")
+    except OSError:
+        pass            # a cache write failure must never break the real result
 
 # The five kill-chain stages First45 understands (in attack order).
 STAGES = ["recon", "exploit_attempt", "web_shell", "loader_download", "c2_contact", "ddos"]
@@ -102,17 +135,22 @@ def _client() -> genai.Client:
     return genai.Client(api_key=key)
 
 
-def _generate(contents, temperature: float = 0.1, retries: int = 2) -> str:
-    """One Gemma 4 call through the Gemini API, with simple retry."""
+def _generate(contents, temperature: float = 0.1, retries: int = 2,
+              max_output_tokens: int | None = None) -> str:
+    """One Gemma 4 call through the Gemini API, with simple retry.
+
+    max_output_tokens would cap how much the model generates, but capping it too
+    low truncates the threat JSON / report and forces a slow repair call, so by
+    default it is left unset (the latency win from the cache below dwarfs any
+    saving here). Callers may still pass a cap for genuinely short outputs.
+    """
     client = _client()
+    cfg = types.GenerateContentConfig(temperature=temperature, max_output_tokens=max_output_tokens) \
+        if max_output_tokens else types.GenerateContentConfig(temperature=temperature)
     last_error = None
     for attempt in range(retries + 1):
         try:
-            response = client.models.generate_content(
-                model=MODEL,
-                contents=contents,
-                config=types.GenerateContentConfig(temperature=temperature),
-            )
+            response = client.models.generate_content(model=MODEL, contents=contents, config=cfg)
             return response.text or ""
         except Exception as error:  # network / rate limit / server error
             last_error = error
@@ -169,6 +207,16 @@ def extract_threat(text: str | None = None, image_bytes: bytes | None = None,
         raise ValueError("Give advisory text or an image")
     started = time.time()
 
+    # Cache hit on an advisory we have read before -> return in milliseconds.
+    key = (_cache_key("img", image_bytes) if image_bytes
+           else _cache_key("txt", text.encode("utf-8")))
+    cached = _cache_get(key)
+    if cached is not None:
+        cached.setdefault("_meta", {})
+        cached["_meta"]["cached"] = True
+        cached["_meta"]["seconds"] = round(time.time() - started, 3)   # the cache lookup itself
+        return cached
+
     if image_bytes:
         contents = [THREAT_PROMPT,
                     types.Part.from_bytes(data=image_bytes, mime_type=mime_type)]
@@ -189,8 +237,10 @@ def extract_threat(text: str | None = None, image_bytes: bytes | None = None,
         "model": MODEL,
         "input": "image" if image_bytes else "text",
         "seconds": round(time.time() - started, 1),
+        "cached": False,
         "ioc_check": verify_iocs(threat, source_text),
     }
+    _cache_put(key, threat)          # next read of this exact advisory returns in ms
     return threat
 
 

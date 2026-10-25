@@ -218,7 +218,10 @@ if step == STEPS[0]:
                 st.error("**No fix exists for:** " + ", ".join(threat["no_fix_branches"]) + ". These must be upgraded.")
             if nu:
                 st.warning("Not found in the article, so treated as unverified: " + ", ".join(chk["unverified"]))
-            st.caption(f"Read by Gemma 4 ({meta.get('model', '?')}, open weights) in {meta.get('seconds', '?')} s. "
+            timing = ("from cache (instant)" if meta.get("cached")
+                      else f"in {meta.get('seconds', '?')} s")
+            st.caption(f"Read by Gemma 4 ({meta.get('model', '?')}, open weights) {timing}. "
+                       "Reading the same advisory again is served from cache in milliseconds. "
                        "Every address is double-checked against the article so the AI can't invent one.")
             with st.expander("Details Gemma extracted"):
                 st.json({k: v for k, v in threat.items() if k != "_meta"})
