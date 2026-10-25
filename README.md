@@ -200,7 +200,7 @@ AI coding tools used to **build** First45 (these are not part of the open-source
 
 | Tool | What it produced |
 |------|------------------|
-| **Claude** (Anthropic) | First drafts of all Python files (`gemma_client.py`, `hunt.py`, `rules.py`, `protect.py`, `notify.py`, `app.py`, `ui.py`, `device_guard.py`, `simulate_bot.py`, `lab.py`, `make_demo_logs.py`, the `pages/` scripts and the skill scripts), the Agent Skill `SKILL.md`, this README, NOTICE and CONTRIBUTING, and the PHP2Shell advisory summary in `samples/` (compiled from the cited public sources). |
+| **Claude** (Anthropic) | First drafts of all Python files (`gemma_client.py`, `hunt.py`, `rules.py`, `intel.py`, `protect.py`, `notify.py`, `app.py`, `ui.py`, `device_guard.py`, `simulate_bot.py`, `lab.py`, `make_demo_logs.py`, the `pages/` scripts and the skill scripts), the Agent Skill `SKILL.md`, this README, NOTICE and CONTRIBUTING, and the PHP2Shell advisory summary in `samples/` (compiled from the cited public sources). |
 
 The team chose the idea and scope, made the design decisions, set up the API key and environment, ran and tested every
 step, reviewed the code, and can explain every file.

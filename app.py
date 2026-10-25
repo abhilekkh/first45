@@ -26,6 +26,7 @@ import streamlit as st
 
 import gemma_client
 import hunt
+import intel
 import lab
 import notify
 import protect
@@ -138,6 +139,16 @@ def lock_defense() -> None:
     """Freeze the advisory -> defenses stopwatch the first time a defense is produced."""
     if ss.get("t0") and ss.get("t_defense") is None:
         ss.t_defense = round(time.time() - ss.t0, 1)
+
+
+def attack_chips(techniques) -> str:
+    """Clickable MITRE ATT&CK technique chips linking to attack.mitre.org."""
+    if not techniques:
+        return ""
+    chips = "".join(f'<a class="f45-attack" href="{intel.technique_url(tid)}" target="_blank" '
+                    f'rel="noopener">{tid} · {html.escape(nm)}</a>' for tid, nm in techniques)
+    return ('<div class="f45-attack-row"><span class="f45-attack-label">MITRE ATT&amp;CK</span>'
+            + chips + "</div>")
 
 
 VERDICT_LEVEL = {"COMPROMISED": "crit", "ATTACKED": "med", "PROTECTED": "ok", "SAFE": "ok"}
@@ -296,6 +307,21 @@ if step == STEPS[0]:
             a.metric("Danger (CVSS, out of 10)", threat.get("cvss") or "?")
             b.metric("Attacker addresses found", len(threat["iocs"]["ips"]) + len(threat["iocs"]["domains"]))
             c.metric("Checked against the article", f"{nv}/{nv + nu} verified")
+            # CISA KEV: is this CVE confirmed exploited in the wild? (the key priority signal)
+            kev = intel.kev_status(threat.get("cves", []))
+            if kev["hits"]:
+                h = kev["hits"][0]
+                st.error(f"**Actively exploited in the wild** - listed in CISA's Known Exploited "
+                         f"Vulnerabilities catalog (added {h['dateAdded']}, ransomware use: {h['ransomware']}). "
+                         "Patch this now.")
+            elif kev["available"] and kev["checked"]:
+                st.caption("Not currently in CISA's Known Exploited Vulnerabilities catalog "
+                           "(no confirmed in-the-wild exploitation listed).")
+            # MITRE ATT&CK techniques for the advisory's kill-chain stages
+            techs = intel.techniques_for_stages([s.get("stage") for s in threat.get("stages", [])])
+            chips = attack_chips(techs)
+            if chips:
+                st.markdown(chips, unsafe_allow_html=True)
             if threat.get("fixed_versions"):
                 st.success("**Safe versions:** " + ", ".join(threat["fixed_versions"]))
             if threat.get("no_fix_branches"):
@@ -457,6 +483,9 @@ elif step == STEPS[2]:
                         ("All attacks against this server are now blocked." if prev else story(row.host, [])))
             if len(hf):
                 st.markdown(chain_html(set(live), prev), unsafe_allow_html=True)
+                host_tech = attack_chips(intel.techniques_for_stages(live))
+                if host_tech:
+                    st.markdown(host_tech, unsafe_allow_html=True)
                 c1, c2 = st.columns([1, 4])
                 if live and c1.button("Replay attack", key=f"rp-{row.host}"):
                     box = st.empty()
@@ -533,18 +562,22 @@ else:
                      "No phone channel configured yet (set NTFY_TOPIC in .env).")
         ui.section("Defense files")
         if threat:
-            notes = {".sigma.yml": "for security dashboards (Sigma)", ".rules": "for intrusion detection (Suricata)",
+            notes = {".sigma.yml": "for security dashboards (Sigma)", ".splunk.spl": "for Splunk (SPL search)",
+                     ".elastic.kql": "for Elastic / Kibana (KQL)", ".rules": "for intrusion detection (Suricata)",
                      ".nginx-deny.conf": "for the web server (nginx)", ".firewall.txt": "firewall commands (Linux / Windows)"}
             all_files = rules.all_rules(threat)
-            # One-click bundle: every rule file (+ the report, if written) in a single zip.
+            slug = rules._slug(threat.get("name", "threat"))
+            # One-click bundle: every rule file, the STIX IOC export, and the report in a zip.
             bundle = io.BytesIO()
             with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as zf:
                 for fname, text in all_files.items():
                     zf.writestr(fname, text)
+                zf.writestr(f"{slug}.stix.json", intel.stix_bundle(threat))   # for MISP / OpenCTI
                 if ss.get("report"):
                     zf.writestr("incident-report.md", ss.report)
-                zf.writestr("README.txt", "First45 defense bundle.\nDeploy each rule in its tool; "
-                            "blocks are human-approved and reversible.\n")
+                zf.writestr("README.txt", "First45 defense bundle.\nRules for Sigma, Splunk, Elastic, "
+                            "Suricata, nginx and host firewalls, plus a STIX 2.1 IOC bundle for "
+                            "MISP/OpenCTI.\nDeploy each in its tool; blocks are human-approved and reversible.\n")
             lock_defense()                  # rules exist = defenses are ready
             st.download_button("Download all defenses (.zip)", bundle.getvalue(),
                                file_name="first45-defenses.zip", type="primary", key="dl-all")

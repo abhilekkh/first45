@@ -17,7 +17,15 @@ from datetime import date
 
 import yaml
 
+import intel
+
 PUBLIC_RESOLVERS = {"8.8.8.8", "8.8.4.4", "1.1.1.1", "1.0.0.1", "9.9.9.9"}
+
+
+def _attack_tags(threat: dict) -> list[str]:
+    """Sigma ATT&CK tags (attack.tXXXX) from the advisory's kill-chain stages."""
+    stages = [s.get("stage") for s in threat.get("stages", [])]
+    return [f"attack.{tid.split('.')[0].lower()}" for tid, _ in intel.techniques_for_stages(stages)]
 
 
 def _slug(text: str) -> str:
@@ -35,7 +43,8 @@ def sigma_rules(threat: dict) -> str:
     name = threat.get("name", "Threat")
     refs = [f"https://nvd.nist.gov/vuln/detail/{c}" for c in threat.get("cves", [])]
     ips, domains, ports = _iocs(threat)
-    tags = ["attack.command-and-control"] + [f"cve.{c.lower().removeprefix('cve-')}" for c in threat.get("cves", [])]
+    tags = (["attack.command-and-control"] + _attack_tags(threat)
+            + [f"cve.{c.lower().removeprefix('cve-')}" for c in threat.get("cves", [])])
     base = {"status": "experimental", "author": "First45 (auto-generated from advisory)",
             "date": date.today().isoformat(), "references": refs, "tags": tags}
     docs = []
@@ -121,12 +130,55 @@ def firewall_commands(threat: dict) -> str:
     return "\n".join(out) + "\n"
 
 
+def splunk_spl(threat: dict) -> str:
+    """Splunk SPL searches over the advisory's indicators (Uncoder-style translation)."""
+    name = threat.get("name", "Threat")
+    ips, domains, ports = _iocs(threat)
+    out = [f"# First45 Splunk SPL detections for {name}"]
+    if ips:
+        ors = " OR ".join([f'dest_ip="{i}"' for i in ips] + [f'src_ip="{i}"' for i in ips])
+        out += ["# Traffic to or from known attacker IPs",
+                f"index=* ({ors})\n| stats count min(_time) as first max(_time) as last by src_ip dest_ip dest_port"]
+    if ports:
+        ors = " OR ".join(f"dest_port={p}" for p in ports)
+        out += ["# Outbound to known C2 ports",
+                f"index=* ({ors})\n| stats count by src_ip dest_ip dest_port"]
+    if domains:
+        ors = " OR ".join(f'query="{d}"' for d in domains)
+        out += ["# DNS lookups of C2 domains",
+                f'index=* sourcetype=dns ({ors})\n| stats count by src query']
+    if not (ips or domains or ports):
+        out.append("# (advisory had no network indicators to detect on)")
+    return "\n\n".join(out) + "\n"
+
+
+def elastic_kql(threat: dict) -> str:
+    """Elastic / Kibana KQL queries over the advisory's indicators (ECS field names)."""
+    name = threat.get("name", "Threat")
+    ips, domains, ports = _iocs(threat)
+    out = [f"// First45 Elastic (KQL) detections for {name} - ECS fields"]
+    if ips:
+        ors = " or ".join([f'destination.ip:"{i}"' for i in ips] + [f'source.ip:"{i}"' for i in ips])
+        out += ["// Traffic to or from known attacker IPs", f"({ors})"]
+    if ports:
+        out += ["// Outbound to known C2 ports",
+                "(" + " or ".join(f"destination.port:{p}" for p in ports) + ")"]
+    if domains:
+        out += ["// DNS lookups of C2 domains",
+                "(" + " or ".join(f'dns.question.name:"{d}"' for d in domains) + ")"]
+    if not (ips or domains or ports):
+        out.append("// (advisory had no network indicators to detect on)")
+    return "\n\n".join(out) + "\n"
+
+
 def all_rules(threat: dict) -> dict[str, str]:
-    """filename -> content, for display and download."""
+    """filename -> content, for display and download. Open formats for many tools."""
     slug = _slug(threat.get("name", "threat"))
     ips, _, _ = _iocs(threat)
     return {
         f"{slug}.sigma.yml": sigma_rules(threat),
+        f"{slug}.splunk.spl": splunk_spl(threat),
+        f"{slug}.elastic.kql": elastic_kql(threat),
         f"{slug}.rules": suricata_rules(threat),
         f"{slug}.nginx-deny.conf": nginx_deny(ips, threat.get("name", "")),
         f"{slug}.firewall.txt": firewall_commands(threat),

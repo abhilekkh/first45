@@ -213,6 +213,14 @@ section[data-testid="stSidebar"]{{background:var(--surface)!important;border-rig
 .tl-note{{color:var(--muted);font-size:.86rem}}
 @media(max-width:640px){{.tl-item{{grid-template-columns:1fr;gap:2px;padding-left:22px}}}}
 
+/* ---- MITRE ATT&CK technique chips ---- */
+.f45-attack-row{{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:.4rem 0 .2rem}}
+.f45-attack-label{{font-family:'IBM Plex Mono',monospace;font-size:.68rem;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--muted);margin-right:2px}}
+a.f45-attack{{font-family:'IBM Plex Mono',monospace;font-size:.74rem;padding:2px 8px;border-radius:4px;
+  border:1px solid var(--border);color:var(--muted)!important;background:var(--surface2);text-decoration:none}}
+a.f45-attack:hover{{border-color:var(--accent);color:var(--text)!important}}
+
 /* ---- polish: a little lift on cards ---- */
 [data-testid="stVerticalBlockBorderWrapper"]:has(>div>[data-testid="stVerticalBlock"]){{
   transition:border-color .15s,box-shadow .15s}}
