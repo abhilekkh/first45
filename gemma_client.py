@@ -237,14 +237,39 @@ def explain_device(threat: dict | None, findings: list[dict], actions: list[str]
 
 
 def fetch_url_text(url: str, max_chars: int = 30000) -> str:
-    """Download a public advisory / news page and return its readable text."""
+    """Download a public advisory / news page and return its readable text.
+
+    Many sites (CISA, vendor advisories, news) reject a non-browser User-Agent
+    with 403 Forbidden, so we send realistic browser headers. If a site still
+    blocks automated reading, we raise a clear message telling the user to paste
+    the advisory text instead (the "Paste advisory text" option).
+    """
     import html
     import requests
-    resp = requests.get(url, timeout=20, headers={"User-Agent": "First45/0.1 (advisory reader)"})
-    resp.raise_for_status()
+    headers = {
+        "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                       "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    try:
+        resp = requests.get(url, timeout=20, headers=headers, allow_redirects=True)
+        resp.raise_for_status()
+    except requests.HTTPError as error:
+        code = getattr(error.response, "status_code", None)
+        if code in (401, 403, 429):
+            raise RuntimeError(
+                f"That site blocked automated reading (HTTP {code}). Open the page, copy its "
+                "text, and use 'Paste advisory text' instead.") from error
+        raise RuntimeError(f"Could not download the page (HTTP {code}).") from error
+    except requests.RequestException as error:
+        raise RuntimeError(f"Could not reach that URL: {error}") from error
     page = re.sub(r"(?is)<(script|style|noscript|svg|nav|footer|header)[^>]*>.*?</\1>", " ", resp.text)
     page = re.sub(r"(?s)<[^>]+>", " ", page)
     text = re.sub(r"\s+", " ", html.unescape(page)).strip()
+    if len(text) < 200:
+        raise RuntimeError("That page had almost no readable text (it may be built by JavaScript). "
+                           "Copy the advisory text and use 'Paste advisory text' instead.")
     return text[:max_chars]
 
 
